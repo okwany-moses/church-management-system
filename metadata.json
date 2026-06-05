@@ -1,0 +1,6 @@
+{
+  "name": "Church Management System",
+  "description": "A comprehensive church management platform with membership, ministries, attendance tracking, scheduling, and contribution management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

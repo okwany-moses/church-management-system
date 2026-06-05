@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Local Database
+church.db
+church.db-journal
+
+# Environment variables
+.env
+
+# OS metadata
+.DS_Store
+Thumbs.db
