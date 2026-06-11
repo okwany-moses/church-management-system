@@ -139,13 +139,13 @@ export default function Communications({ isAdmin = true }: CommunicationsProps) 
     } else if (smsGroupType === "Church Leaders") {
       targetMembers = members.filter(m => m.status === "Active" && m.id < 5);
     } else if (smsGroupType === "Manual Listing" && smsCustomRecipients) {
-      // Split mock
-      targetMembers = smsCustomRecipients.split(",").map((name, i) => ({
+      // Treat custom input as a list of phone numbers for testing
+      targetMembers = smsCustomRecipients.split(",").map((phone, i) => ({
         id: i + 999,
-        first_name: name.trim(),
+        first_name: "Manual",
         last_name: "",
         email: "",
-        phone: "+254 7" + Math.floor(10000000 + Math.random() * 90000000),
+        phone: phone.trim(),
         status: "Active",
         ministries_list: null,
         join_date: "",
@@ -162,23 +162,20 @@ export default function Communications({ isAdmin = true }: CommunicationsProps) 
       recipients_count: recipientsCount,
       recipients_names: recipientsNames || "Elders, Congregation Board",
       group_type: smsGroupType,
-      date_sent: new Date().toISOString().split("T")[0]
+      phones: targetMembers.map(m => m.phone).filter((p): p is string => !!p)
     };
 
-    // Simulate standard latency
-    setTimeout(async () => {
-      try {
-        await api.sendSmsSimulated(payload);
-        setSmsMessage("");
-        setSmsCustomRecipients("");
-        setIsSendingSms(false);
-        loadData();
-        alert(`Bulk SMS Broadcast dispatched successfully to ${recipientsCount} numbers!`);
-      } catch (err: any) {
-        setIsSendingSms(false);
-        alert("Broadcasting simulated SMS failed: " + err.message);
-      }
-    }, 1800);
+    try {
+      await api.sendSmsSimulated(payload);
+      setSmsMessage("");
+      setSmsCustomRecipients("");
+      setIsSendingSms(false);
+      loadData();
+      alert(`Bulk SMS Broadcast dispatched successfully to ${recipientsCount} numbers!`);
+    } catch (err: any) {
+      setIsSendingSms(false);
+      alert("Broadcasting SMS failed: " + err.message);
+    }
   };
 
   // Launch simulated conference call
@@ -330,11 +327,11 @@ export default function Communications({ isAdmin = true }: CommunicationsProps) 
 
                 {smsGroupType === "Manual Listing" && (
                   <div>
-                    <label className="block font-bold text-[#636E72] mb-1">Input Recipient Names (Separated by comma) *</label>
+                    <label className="block font-bold text-[#636E72] mb-1">Input Test Phone Numbers (Separated by comma) *</label>
                     <input
                       type="text"
                       required
-                      placeholder="e.g. Samuel Omondi, Mary Atieno, Peter Okoth"
+                      placeholder="e.g. +254712345678, +254722000000"
                       value={smsCustomRecipients}
                       onChange={(e) => setSmsCustomRecipients(e.target.value)}
                       className="w-full h-10 rounded-xl bg-[#FDFCF8] border border-[#E5E1D8] px-3.5 focus:outline-none focus:border-[#C5A059] focus:bg-white text-xs transition"

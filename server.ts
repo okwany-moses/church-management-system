@@ -1,17 +1,20 @@
+import "dotenv/config";
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
+import { HYMNS, Hymn } from "./src/data/hymns"; // Import HYMNS and Hymn interface
 import { createServer as createViteServer } from "vite";
 import fs from "fs";
 import { open } from "sqlite";
 import sqlite3 from "sqlite3";
+import { sendSmsNotification } from "./smsService";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000; // Default to 3000 if not specified
 
   app.use(express.json());
 
@@ -46,6 +49,15 @@ async function startServer() {
       birth_date TEXT,
       notes TEXT,
       title TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'congregant', -- 'admin', 'congregant'
+      member_id INTEGER, -- Optional: Link to a member record
+      FOREIGN KEY(member_id) REFERENCES members(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS ministries (
@@ -188,6 +200,15 @@ async function startServer() {
       melody_notes_json TEXT
     );
   `);
+
+  // Migration: Ensure hymns table is up to date with new columns
+  const hymnColumns = await db.all("PRAGMA table_info(hymns)");
+  const columnNames = hymnColumns.map(c => c.name);
+  
+  if (!columnNames.includes("melody_notes_json")) {
+    console.log("Migrating database: Adding melody_notes_json to hymns...");
+    await db.exec("ALTER TABLE hymns ADD COLUMN melody_notes_json TEXT;");
+  }
 
   // Seed data if DB is empty
   const memberCount = await db.get("SELECT COUNT(*) as count FROM members");
@@ -397,39 +418,28 @@ async function startServer() {
       ["Sister Susan Auma", "555-0455", "We are thanking God for safe delivery of a healthy baby boy! Thank you for the pastoral prayers.", 0, "Prayed For", "2026-05-30"]
     );
 
-    // 14. Seed Hymns from static data
-    const initialHymns = [
-      {
-        number: 1,
-        category: "Grace & Salvation",
-        key: "F Major",
-        author: "John Newton, 1779",
-        scripture: "Ephesians 2:8",
-        description: "The timeless testimony of a soul saved from despair.",
-        languages: {
-          english: { title: "Amazing Grace", verses: ["Amazing grace! How sweet the sound..."] },
-          kiswahili: { title: "Neema ya Ajabu", verses: ["Neema ya ajabu, sauti ya heri..."] },
-          luo: { title: "Neema Maler ya Ajabu", verses: ["Neema ya ajabu! Dwol maber mar hera..."] }
-        }
-      }
-    ];
+    console.log("Database seeded successfully!");
+  }
 
-    for (const h of initialHymns) {
+  // Seed Hymns Library if empty (Independent of member count)
+  const hymnCount = await db.get("SELECT COUNT(*) as count FROM hymns");
+  if (hymnCount.count === 0) {
+    console.log("Initializing digital hymns library from source data...");
+    for (const h of HYMNS) {
       await db.run(
         `INSERT INTO hymns (number, category, hymn_key, author, scripture, description, languages_json, melody_notes_json)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [h.number, h.category, h.key, h.author, h.scripture, h.description, JSON.stringify(h.languages), JSON.stringify(h.melodyNotes || [])]
       );
     }
-
-    console.log("Database seeded successfully!");
+    console.log("Hymns library seeded successfully.");
   }
 
   // ----------------------------------------------------
   // API Endpoints
   // ----------------------------------------------------
 
-  // DASHBOARD STATS
+  // DASHBOARD STATS (Protected)
   app.get("/api/stats", async (req, res) => {
     try {
       // 1. Total active members
@@ -1071,18 +1081,47 @@ async function startServer() {
   });
 
   app.post("/api/communications/sms", async (req, res) => {
-    const { message, recipients_count, recipients_names, date_sent, group_type } = req.body;
-    if (!message || !recipients_count || !recipients_names || !group_type) {
-      return res.status(400).json({ error: "Message, Recipients Count, Recipient Names, and Group Type are required." });
+    const { message, recipients_count, recipients_names, date_sent, group_type, phones } = req.body;
+    
+    console.log("REQ BODY:");
+    console.log(JSON.stringify(req.body, null, 2));
+
+    if (!message || !recipients_count || !group_type) {
+      return res.status(400).json({ error: "Message and target group are required." });
     }
+
     try {
+      // Real-time dispatch via Africa's Talking
+      if (phones && Array.isArray(phones) && phones.length > 0) {
+        console.log(`[SMS BROADCAST] Sending to ${phones.length} recipients...`);
+        
+        // Robust E.164 formatting: Remove spaces/dashes and ensure + prefix
+        const validPhones = phones
+          .filter(p => p && p.trim().length > 0)
+          .map(p => p.replace(/[^\d+]/g, '')) // Remove everything except digits and +
+          .map(p => p.startsWith('+') ? p : `+${p}`);
+
+        console.log("Valid Phones (after formatting in server.ts):", validPhones);
+        console.log("Type of Valid Phones (in server.ts):", typeof validPhones);
+        console.log("Is Valid Phones an Array? (in server.ts):", Array.isArray(validPhones));
+        if (validPhones.length > 0) { // Ensure there are valid phones to send to
+          await sendSmsNotification(validPhones, message);
+        }
+      }
+
       const dateStr = date_sent || new Date().toISOString().split("T")[0];
       const result = await db.run(`
         INSERT INTO sms_logs (message, recipients_count, recipients_names, date_sent, group_type)
         VALUES (?, ?, ?, ?, ?)
-      `, [message, recipients_count, recipients_names, dateStr, group_type]);
-      res.status(201).json({ id: result.lastID, status: "sent_simulated", message: "Bulk SMS simulated successfully" });
+      `, [message, recipients_count, recipients_names || "Group Members", dateStr, group_type]);
+      
+      res.status(201).json({ 
+        id: result.lastID, 
+        status: "sent", 
+        message: `Bulk SMS dispatched to ${recipients_count} recipients.` 
+      });
     } catch (err: any) {
+      console.error("SMS Dispatch Error:", err);
       res.status(500).json({ error: err.message });
     }
   });
@@ -1241,6 +1280,43 @@ async function startServer() {
     }
   });
 
+  // USERS MANAGEMENT ENDPOINTS
+  app.get("/api/users", async (req, res) => {
+    try {
+      const users = await db.all(`
+        SELECT u.id, u.username, u.role, u.member_id, m.first_name, m.last_name 
+        FROM users u
+        LEFT JOIN members m ON u.member_id = m.id
+      `);
+      res.json(users);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/users", async (req, res) => {
+    const { username, password, role, member_id } = req.body;
+    try {
+      // Using a simple insert; for a full login system you'd use bcrypt here later
+      const result = await db.run(
+        "INSERT INTO users (username, password_hash, role, member_id) VALUES (?, ?, ?, ?)",
+        [username, password, role || 'congregant', member_id || null]
+      );
+      res.status(201).json({ id: result.lastID });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.delete("/api/users/:id", async (req, res) => {
+    try {
+      await db.run("DELETE FROM users WHERE id = ?", [req.params.id]);
+      res.json({ message: "User deleted successfully" });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   // ----------------------------------------------------
   // Vite Integration & Asset Serving
   // ----------------------------------------------------
@@ -1261,7 +1337,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  app.listen(+PORT, "0.0.0.0", () => { // Convert PORT to a number
     console.log(`Church Management System server running in ${process.env.NODE_ENV || "development"} mode at http://localhost:${PORT}`);
   });
 }

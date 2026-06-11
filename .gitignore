@@ -1,16 +1,21 @@
 # Dependencies
 node_modules/
 
-# Build output
+# Production Build
 dist/
 
-# Local Database
+# Environment Variables (Security)
+.env
+.env.local
+.env.production
+
+# Local SQLite Database
 church.db
 church.db-journal
 
-# Environment variables
-.env
-
-# OS metadata
+# OS Generated files
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log

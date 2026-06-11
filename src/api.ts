@@ -139,7 +139,7 @@ export const api = {
 
   // Communications (SMS & Video)
   getSmsLogs: () => request<SmsLog[]>("/communications/sms"),
-  sendSmsSimulated: (log: { message: string; recipients_count: number; recipients_names: string; group_type: string }) => request<{ id: number; status: string; message: string }>("/communications/sms", {
+  sendSmsSimulated: (log: { message: string; recipients_count: number; recipients_names: string; group_type: string; phones: string[] }) => request<{ id: number; status: string; message: string }>("/communications/sms", {
     method: "POST",
     body: JSON.stringify(log),
   }),
