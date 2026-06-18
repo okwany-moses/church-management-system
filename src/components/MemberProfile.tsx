@@ -32,6 +32,8 @@ export interface SQLiteMemberProfile {
   gender: "Male" | "Female" | "Other";
   birthDate: string;
   joinDate: string;
+  registration_number?: string;
+  title?: string;
   status: "Active" | "Inactive" | "Visitor";
   address: {
     street: string;
@@ -343,6 +345,14 @@ export default function MemberProfile({ memberId }: MemberProfileProps) {
                   {activeProfile.status}
                 </span>
               </div>
+
+              {activeProfile.registration_number && (
+                <div className="mt-2">
+                  <span className="text-[10px] font-black text-[#C5A059] bg-[#2D3E50] px-3 py-1 rounded-lg uppercase tracking-tighter">
+                    Reg: {activeProfile.registration_number}
+                  </span>
+                </div>
+              )}
 
               {activeProfile.notes && (
                 <p className="mt-4 text-[11px] text-[#636E72] italic bg-[#F5F2ED]/50 p-3 rounded-xl border border-[#E5E1D8]/65 leading-relaxed text-left w-full">

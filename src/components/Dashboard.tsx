@@ -870,7 +870,7 @@ export default function Dashboard({ onNavigate, onSelectMember, isAdmin = true }
                       </Pie>
                       <Tooltip 
                         contentStyle={{ borderRadius: "12px", border: "1px solid #CFD8E3", fontSize: "11px" }}
-                        formatter={(value: number) => [formatCurrency(value), "Total Raised"]}
+                        formatter={(value: any) => [formatCurrency(Number(value || 0)), "Total Raised"]}
                       />
                     </PieChart>
                   </ResponsiveContainer>

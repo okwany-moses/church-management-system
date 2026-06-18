@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api";
-import { Member, Ministry, Contribution } from "../types";
+import { Member, Ministry, Contribution, Branch, CellGroup } from "../types";
 import { 
   Plus, 
   Search, 
@@ -10,14 +10,18 @@ import {
   Eye, 
   X, 
   ShieldAlert,
-  User, 
+  User,
+  UploadCloud,
+  FileText,
   Phone, 
   Mail, 
   Calendar,
   Layers,
   HeartHandshake,
   DollarSign,
-  FileSpreadsheet
+  FileSpreadsheet,
+  MapPin,
+  Home
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { downloadCSV } from "../utils/exporter";
@@ -32,13 +36,19 @@ interface MembersProps {
 export default function Members({ onDataChange, selectedMemberId, onClearSelectedMember, isAdmin = true }: MembersProps) {
   const [members, setMembers] = useState<Member[]>([]);
   const [ministries, setMinistries] = useState<Ministry[]>([]);
+  const [branches, setBranches] = useState<Branch[]>([]);
+  const [cellGroups, setCellGroups] = useState<CellGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [branchFilter, setBranchFilter] = useState("All");
+  const [cellGroupFilter, setCellGroupFilter] = useState("All");
   const [ministryFilter, setMinistryFilter] = useState("All");
+  const [selectedMemberIds, setSelectedMemberIds] = useState<number[]>([]);
+  const [selectAll, setSelectAll] = useState(false);
 
   // Selected Member Details Modal
   const [detailsMember, setDetailsMember] = useState<(Member & { ministries: Ministry[]; contributions: Contribution[] }) | null>(null);
@@ -49,6 +59,9 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
   const [editingMember, setEditingMember] = useState<Member | null>(null);
 
   // Form Fields State
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [csvFile, setCsvFile] = useState<File | null>(null);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [title, setTitle] = useState("");
@@ -61,6 +74,8 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
   const [birthDate, setBirthDate] = useState("");
   const [notes, setNotes] = useState("");
   const [selectedMinistries, setSelectedMinistries] = useState<number[]>([]);
+  const [branchId, setBranchId] = useState("");
+  const [cellGroupId, setCellGroupId] = useState("");
 
   // Delete Confirm Dialog state
   const [deletingId, setDeletingId] = useState<number | null>(null);
@@ -68,12 +83,16 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
   const loadData = async () => {
     try {
       setLoading(true);
-      const [membersData, ministriesData] = await Promise.all([
+      const [membersData, ministriesData, branchesData, cellsData] = await Promise.all([
         api.getMembers(),
-        api.getMinistries()
+        api.getMinistries(),
+        api.getBranches(),
+        api.getCellGroups()
       ]);
       setMembers(membersData);
       setMinistries(ministriesData);
+      setBranches(branchesData);
+      setCellGroups(cellsData);
       setError(null);
     } catch (err: any) {
       setError(err.message || "Failed to load directory.");
@@ -88,7 +107,7 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
 
   // Listen for external trigger from dashboard navigation (selectedMemberId prop)
   useEffect(() => {
-    if (selectedMemberId) {
+    if (selectedMemberId != null) {
       viewDetails(selectedMemberId);
     }
   }, [selectedMemberId]);
@@ -126,6 +145,8 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
     setBirthDate("");
     setNotes("");
     setSelectedMinistries([]);
+    setBranchId("");
+    setCellGroupId("");
     setShowFormModal(true);
   };
 
@@ -134,7 +155,7 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
     setEditingMember(member);
     setFirstName(member.first_name);
     setLastName(member.last_name);
-    setTitle(member.title || "");
+    setTitle((member as any).title || "");
     setEmail(member.email || "");
     setPhone(member.phone || "");
     setJoinDate(member.join_date);
@@ -143,6 +164,8 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
     setFamilyRole(member.family_role);
     setBirthDate(member.birth_date || "");
     setNotes(member.notes || "");
+    setBranchId(member.branch_id?.toString() || "");
+    setCellGroupId(member.cell_group_id?.toString() || "");
     
     // Fetch individual mapped ministries to prep checkboxes
     api.getMember(member.id).then(res => {
@@ -179,7 +202,9 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
       family_role: familyRole,
       birth_date: birthDate || null,
       notes: notes.trim() || null,
-      ministry_ids: selectedMinistries
+      ministry_ids: selectedMinistries,
+      branch_id: branchId ? parseInt(branchId, 10) : null,
+      cell_group_id: cellGroupId ? parseInt(cellGroupId, 10) : null
     };
 
     try {
@@ -197,6 +222,7 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
       }
     } catch (err: any) {
       alert("Saving member failed: " + err.message);
+      console.error("Saving member failed:", err);
     }
   };
 
@@ -211,6 +237,7 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
       if (onDataChange) onDataChange();
     } catch (err: any) {
       alert("Deletion failed: " + err.message);
+      console.error("Deletion failed:", err);
     }
   };
 
@@ -226,9 +253,69 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
     
     const matchesMinistry = ministryFilter === "All" || 
       (m.ministries_list && m.ministries_list.split(", ").includes(ministryFilter));
+    
+    const matchesBranch = branchFilter === "All" || 
+      (m.branch_id && m.branch_id.toString() === branchFilter);
 
-    return matchesSearch && matchesStatus && matchesMinistry;
+    const matchesCellGroup = cellGroupFilter === "All" ||
+      (m.cell_group_id && m.cell_group_id.toString() === cellGroupFilter);
+
+    return matchesSearch && matchesStatus && matchesMinistry && matchesBranch && matchesCellGroup;
   });
+
+  const toggleSelectMember = (id: number) => {
+    setSelectedMemberIds(prev =>
+      prev.includes(id) ? prev.filter(memberId => memberId !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAll = () => {
+    if (selectAll) {
+      setSelectedMemberIds([]);
+    } else {
+      setSelectedMemberIds(filteredMembers.map(m => m.id));
+    }
+    setSelectAll(!selectAll);
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedMemberIds.length === 0) {
+      alert("No members selected for deletion.");
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to delete ${selectedMemberIds.length} selected members? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      await api.deleteMembersBulk(selectedMemberIds);
+      setSelectedMemberIds([]);
+      setSelectAll(false);
+      loadData();
+      if (onDataChange) onDataChange();
+      alert(`${selectedMemberIds.length} members deleted successfully.`);
+    } catch (err: any) {
+      alert("Bulk deletion failed: " + err.message);
+      console.error("Bulk deletion failed:", err);
+    }
+  };
+
+  const handleImportCsv = async () => {
+    if (!csvFile) {
+      setImportMessage("Please select a CSV file to upload.");
+      return;
+    }
+    setImportMessage("Uploading and importing members...");
+    try {
+      const formData = new FormData();
+      formData.append('file', csvFile);
+      const response = await api.importMembersCsv(formData); // Assuming api.ts handles FormData
+      setImportMessage(response.message || "Import successful!");
+      setShowImportModal(false);
+      loadData();
+    } catch (err: any) {
+      setImportMessage("Import failed: " + (err.message || "Unknown error"));
+    }
+  };
 
   const handleExportCSV = () => {
     const headers = [
@@ -261,6 +348,23 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
           
           {isAdmin && (
             <button
+              onClick={() => setShowImportModal(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-[#E5E1D8] bg-white px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#636E72] hover:bg-neutral-50 hover:text-neutral-900 transition cursor-pointer"
+              title="Import members from CSV file"
+            >
+              <UploadCloud className="h-4 w-4 text-blue-600" />
+              <span>Import CSV</span>
+            </button>
+          )}
+
+          {isAdmin && selectedMemberIds.length > 0 && (
+            <button onClick={handleDeleteSelected} className="inline-flex items-center gap-1.5 rounded-xl bg-rose-500 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-rose-600 transition cursor-pointer shadow-sm shadow-rose-500/15">
+              <Trash2 className="h-4 w-4" />
+              <span>Delete Selected ({selectedMemberIds.length})</span>
+            </button>
+          )}
+          {isAdmin && (
+            <button
               onClick={openAddForm}
               className="inline-flex items-center gap-1.5 rounded-xl bg-[#2D3E50] px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#C5A059] hover:bg-[#1e2a36] transition cursor-pointer shadow-sm shadow-[#2D3E50]/15"
             >
@@ -283,7 +387,7 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
       ) : (
         <>
           {/* Filtering Tools Panel */}
-          <div className="grid gap-3 rounded-xl border border-[#E5E1D8] bg-white p-4 shadow-sm min-[830px]:grid-cols-4">
+          <div className="grid gap-3 rounded-xl border border-[#E5E1D8] bg-white p-4 shadow-sm min-[830px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             {/* Search Input */}
             <div className="relative min-[830px]:col-span-2">
               <span className="absolute inset-y-0 left-0 flex items-center pl-3.5 text-[#A0A0A0] pointer-events-none">
@@ -335,6 +439,44 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
                 </select>
               </div>
             </div>
+
+            {/* Branch Filter */}
+            <div>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[#A0A0A0] pointer-events-none">
+                  <MapPin className="h-3.5 w-3.5" />
+                </span>
+                <select
+                  value={branchFilter}
+                  onChange={(e) => setBranchFilter(e.target.value)}
+                  className="w-full h-10 rounded-xl bg-[#F5F2ED]/50 border border-[#E5E1D8] pl-9 pr-3 text-xs font-bold uppercase tracking-wider text-[#636E72] focus:outline-none focus:border-[#C5A059] focus:bg-white transition cursor-pointer appearance-none"
+                >
+                  <option value="All">All branches</option>
+                  {branches.map(b => (
+                    <option key={b.id} value={b.id.toString()}>{b.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Cell Group Filter */}
+            <div>
+              <div className="relative">
+                <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[#A0A0A0] pointer-events-none">
+                  <Home className="h-3.5 w-3.5" />
+                </span>
+                <select
+                  value={cellGroupFilter}
+                  onChange={(e) => setCellGroupFilter(e.target.value)}
+                  className="w-full h-10 rounded-xl bg-[#F5F2ED]/50 border border-[#E5E1D8] pl-9 pr-3 text-xs font-bold uppercase tracking-wider text-[#636E72] focus:outline-none focus:border-[#C5A059] focus:bg-white transition cursor-pointer appearance-none"
+                >
+                  <option value="All">All cell groups</option>
+                  {cellGroups.map(cg => (
+                    <option key={cg.id} value={cg.id.toString()}>{cg.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
 
           {/* Members Table */}
@@ -343,9 +485,19 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-[#F5F2ED]/80 border-b border-[#E5E1D8] text-[10px] font-bold uppercase tracking-widest text-[#636E72]">
+                    {isAdmin && (
+                      <th className="py-4 px-3">
+                        <input
+                          type="checkbox"
+                          checked={selectAll}
+                          onChange={handleSelectAll}
+                          className="h-4 w-4 rounded border-gray-300 text-[#C5A059] focus:ring-[#C5A059]" />
+                      </th>)}
+                    <th className="py-4 px-6">Reg No.</th>
                     <th className="py-4 px-6">Name</th>
                     <th className="py-4 px-4">Contact Info</th>
                     <th className="py-4 px-4">Ministries</th>
+                    <th className="py-4 px-4">Affiliation</th>
                     <th className="py-4 px-4 text-center">Status</th>
                     <th className="py-4 px-4">Role</th>
                     <th className="py-4 px-6 text-right">Actions</th>
@@ -354,7 +506,7 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
                 <tbody className="divide-y divide-[#F5F2ED] text-xs">
                   {filteredMembers.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-12 text-center text-neutral-400">
+                      <td colSpan={isAdmin ? 9 : 8} className="py-12 text-center text-neutral-400">
                         No member records match the active criteria filters.
                       </td>
                     </tr>
@@ -368,6 +520,24 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
 
                       return (
                         <tr key={m.id} className="hover:bg-neutral-50/50 transition duration-150">
+                          {isAdmin && (
+                            <td className="py-4 px-3">
+                              <input
+                                type="checkbox"
+                                checked={selectedMemberIds.includes(m.id)}
+                                onChange={() => toggleSelectMember(m.id)}
+                                className="h-4 w-4 rounded border-gray-300 text-[#C5A059] focus:ring-[#C5A059]" />
+                            </td>)}
+                          {/* Registration Number */}
+                          <td className="py-4 px-6">
+                            {(m as any).registration_number ? (
+                              <span className="font-mono font-bold text-[#2D3E50] bg-[#F5F2ED] px-2 py-1 rounded border border-[#E5E1D8] text-[10px]">
+                                {(m as any).registration_number}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-neutral-400 italic">Unregistered</span>
+                            )}
+                          </td>
                           {/* Name + Joined Date */}
                           <td className="py-4 px-6">
                             <div className="flex items-center gap-3">
@@ -378,9 +548,9 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
                                 <span className="font-bold text-neutral-800 leading-tight block">
                                   {m.first_name} {m.last_name}
                                 </span>
-                                {m.title && (
+                                {(m as any).title && (
                                   <span className="text-[10px] font-bold text-[#C5A059] uppercase tracking-widest block">
-                                    {m.title}
+                                    {(m as any).title}
                                   </span>
                                 )}
                                 <span className="text-[10px] font-medium text-neutral-400 block mt-0.5">
@@ -422,6 +592,12 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
                             ) : (
                               <span className="text-neutral-400 italic">None</span>
                             )}
+                          </td>
+
+                          {/* Branch/Cell Affiliation */}
+                          <td className="py-4 px-4">
+                            <div className="text-[10px] font-bold text-[#2D3E50]">{m.branch_name || "—"}</div>
+                            <div className="text-[9px] text-emerald-600 font-semibold">{m.cell_group_name || ""}</div>
                           </td>
 
                           {/* Status Badge */}
@@ -755,6 +931,32 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
                   </div>
                 </div>
 
+                {/* Row: Branch & Cell Group */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="block font-bold text-[#636E72] mb-1">Affiliated Branch</label>
+                    <select
+                      value={branchId}
+                      onChange={(e) => setBranchId(e.target.value)}
+                      className="w-full h-10 rounded-xl bg-neutral-50/70 border border-[#E5E1D8] px-2 focus:outline-none focus:border-[#C5A059] focus:bg-white text-xs font-semibold text-[#636E72] cursor-pointer transition"
+                    >
+                      <option value="">-- Select Branch --</option>
+                      {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-bold text-[#636E72] mb-1">Home Cell Group</label>
+                    <select
+                      value={cellGroupId}
+                      onChange={(e) => setCellGroupId(e.target.value)}
+                      className="w-full h-10 rounded-xl bg-neutral-50/70 border border-[#E5E1D8] px-2 focus:outline-none focus:border-[#C5A059] focus:bg-white text-xs font-semibold text-[#636E72] cursor-pointer transition"
+                    >
+                      <option value="">-- Select Cell Group --</option>
+                      {cellGroups.map(cg => <option key={cg.id} value={cg.id}>{cg.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+
                 {/* Row 4: Status / Gender / Family */}
                 <div className="grid gap-4 min-[560px]:grid-cols-3">
                   <div>
@@ -879,7 +1081,12 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDelete(deletingId)}
+                  onClick={() => {
+                    const id = deletingId;
+                    if (id !== null) {
+                      handleDelete(id);
+                    }
+                  }}
                   className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-bold transition cursor-pointer"
                 >
                   Yes, Remove Profile

@@ -664,7 +664,7 @@ export default function Songbook({ isAdmin = true }: { isAdmin?: boolean }) {
                     {isAdmin && (
                       <button
                         id={`delete-hymn-btn-${selectedHymn.id}`}
-                        onClick={() => handleDeleteHymn(selectedHymn.id)}
+                        onClick={() => selectedHymn && handleDeleteHymn(selectedHymn.id)}
                         className="p-1.5 text-red-400 hover:bg-red-50 rounded-md transition cursor-pointer"
                         title="Delete Hymn"
                       >

@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
+import { createRequire } from "module";
 import { HYMNS, Hymn } from "./src/data/hymns"; // Import HYMNS and Hymn interface
 import { createServer as createViteServer } from "vite";
 import fs from "fs";
@@ -9,12 +10,15 @@ import { open } from "sqlite";
 import sqlite3 from "sqlite3";
 import { sendSmsNotification } from "./smsService";
 
+const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000; // Default to 3000 if not specified
+  const csv = require("csv-parser"); // Use require to bypass type declaration issues
+  const upload = require('multer')(); // For handling file uploads (CSV)
 
   app.use(express.json());
 
@@ -48,7 +52,12 @@ async function startServer() {
       family_role TEXT NOT NULL DEFAULT 'Single',
       birth_date TEXT,
       notes TEXT,
-      title TEXT
+      title TEXT,
+      registration_number TEXT,
+      branch_id INTEGER,
+      cell_group_id INTEGER,
+      FOREIGN KEY(branch_id) REFERENCES branches(id) ON DELETE SET NULL,
+      FOREIGN KEY(cell_group_id) REFERENCES cell_groups(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS users (
@@ -100,7 +109,11 @@ async function startServer() {
       date TEXT NOT NULL,
       payment_method TEXT NOT NULL,
       notes TEXT,
-      FOREIGN KEY(member_id) REFERENCES members(id) ON DELETE SET NULL
+      branch_id INTEGER,
+      cell_group_id INTEGER,
+      FOREIGN KEY(member_id) REFERENCES members(id) ON DELETE SET NULL,
+      FOREIGN KEY(branch_id) REFERENCES branches(id) ON DELETE SET NULL,
+      FOREIGN KEY(cell_group_id) REFERENCES cell_groups(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS events (
@@ -201,11 +214,42 @@ async function startServer() {
     );
   `);
 
-  // Migration: Ensure hymns table is up to date with new columns
+  // Migration: Ensure tables are up to date with new columns
+  const memberColumns = await db.all("PRAGMA table_info(members)");
+  const memberColumnNames = memberColumns.map(c => c.name);
+
+  if (!memberColumnNames.includes("title")) {
+    console.log("Migrating database: Adding title to members...");
+    await db.exec("ALTER TABLE members ADD COLUMN title TEXT;");
+  }
+  if (!memberColumnNames.includes("registration_number")) {
+    console.log("Migrating database: Adding registration_number to members...");
+    await db.exec("ALTER TABLE members ADD COLUMN registration_number TEXT;");
+  }
+  if (!memberColumnNames.includes("branch_id")) {
+    console.log("Migrating database: Adding branch_id to members...");
+    await db.exec("ALTER TABLE members ADD COLUMN branch_id INTEGER;");
+  }
+  if (!memberColumnNames.includes("cell_group_id")) {
+    console.log("Migrating database: Adding cell_group_id to members...");
+    await db.exec("ALTER TABLE members ADD COLUMN cell_group_id INTEGER;");
+  }
+
+  const contColumns = await db.all("PRAGMA table_info(contributions)");
+  const contColumnNames = contColumns.map(c => c.name);
+  if (!contColumnNames.includes("branch_id")) {
+    console.log("Migrating database: Adding branch_id to contributions...");
+    await db.exec("ALTER TABLE contributions ADD COLUMN branch_id INTEGER;");
+  }
+  if (!contColumnNames.includes("cell_group_id")) {
+    console.log("Migrating database: Adding cell_group_id to contributions...");
+    await db.exec("ALTER TABLE contributions ADD COLUMN cell_group_id INTEGER;");
+  }
+
   const hymnColumns = await db.all("PRAGMA table_info(hymns)");
-  const columnNames = hymnColumns.map(c => c.name);
-  
-  if (!columnNames.includes("melody_notes_json")) {
+  const hymnColumnNames = hymnColumns.map(c => c.name);
+
+  if (!hymnColumnNames.includes("melody_notes_json")) {
     console.log("Migrating database: Adding melody_notes_json to hymns...");
     await db.exec("ALTER TABLE hymns ADD COLUMN melody_notes_json TEXT;");
   }
@@ -215,22 +259,54 @@ async function startServer() {
   if (memberCount.count === 0) {
     console.log("Seeding database with realistic church data...");
 
-    // 1. Members
+    // Reset database state for reliable seeding
+    await db.exec("PRAGMA foreign_keys = OFF;");
+    const tables = ['members', 'ministries', 'member_ministries', 'attendance_sessions', 'attendance_records', 'contributions', 'events', 'branches', 'cell_groups', 'expenditures', 'sms_logs', 'video_call_logs', 'sermons', 'prayer_requests'];
+    for (const table of tables) await db.exec(`DELETE FROM ${table}`);
+    await db.exec("DELETE FROM sqlite_sequence WHERE name != 'hymns'");
+    await db.exec("PRAGMA foreign_keys = ON;");
+
+    // 1. Branches
+    await db.run(`INSERT INTO branches (name, location, pastor, date_opened, contact_phone, member_count) VALUES (?, ?, ?, ?, ?, ?)`, 
+      ["Ramba-Kabondo Headquarters", "Ramba, Kabondo, Homa Bay County, Kenya", "Apostle Newton Atela", "2010-01-10", "+254 712 345678", 350]
+    );
+    await db.run(`INSERT INTO branches (name, location, pastor, date_opened, contact_phone, member_count) VALUES (?, ?, ?, ?, ?, ?)`, 
+      ["Nairobi Branch", "Umoja, Nairobi, Kenya", "Rev. Joseph Omwamba", "2015-08-15", "+254 722 987654", 120]
+    );
+    await db.run(`INSERT INTO branches (name, location, pastor, date_opened, contact_phone, member_count) VALUES (?, ?, ?, ?, ?, ?)`, 
+      ["Mombasa Outreach", "Mtwapa, Mombasa, Kenya", "Evangelist Mary Atieno", "2019-11-20", "+254 733 111222", 75]
+    );
+
+    // 2. Cell Groups (HQ Ramba-Kabondo)
+    await db.run(`INSERT INTO cell_groups (name, leader_name, meeting_day, meeting_time, location_details, members_count) VALUES (?, ?, ?, ?, ?, ?)`,
+      ["Ramba Faith Prayer Cell", "Elder John Ochieng", "Wednesday", "17:30", "Ramba Village Crossroads", 25]
+    );
+    await db.run(`INSERT INTO cell_groups (name, leader_name, meeting_day, meeting_time, location_details, members_count) VALUES (?, ?, ?, ?, ?, ?)`,
+      ["Kabondo Youth Bible Circle", "Brother James Smith", "Thursday", "18:00", "Kabondo Market Square Hall", 18]
+    );
+    await db.run(`INSERT INTO cell_groups (name, leader_name, meeting_day, meeting_time, location_details, members_count) VALUES (?, ?, ?, ?, ?, ?)`,
+      ["Ramba Grace Fellowship", "Sister Sarah Doe", "Tuesday", "17:00", "Ramba Community Assembly Point", 30]
+    );
+    await db.run(`INSERT INTO cell_groups (name, leader_name, meeting_day, meeting_time, location_details, members_count) VALUES (?, ?, ?, ?, ?, ?)`,
+      ["Kabondo Family Outreach", "Deacon Robert Davis", "Saturday", "16:30", "Robert's Residence, Kabondo", 22]
+    );
+
+    // 3. Members
     const membersList = [
-      ["Newton", "Atela", "apostle.atela@graceflow.org", "555-0100", "2021-01-15", "Active", "Male", "Head", "1978-04-12", "Senior Apostle and founder.", "Apostle"],
-      ["Sarah", "Doe", "sarah.doe@gmail.com", "555-0101", "2021-01-15", "Active", "Female", "Spouse", "1981-08-22", "Sunday School coordinator.", "Pastor"],
-      ["James", "Smith", "james.smith@hotmail.com", "555-0122", "2022-03-10", "Active", "Male", "Single", "1995-11-05", "Youth coordinator and band player.", "Youth Leader"],
-      ["Mary", "Johnson", "mary.j@outlook.com", "555-0133", "2021-06-20", "Active", "Female", "Head", "1969-02-17", "Ushering ministry chairperson.", "Deaconess"],
-      ["Robert", "Davis", "robert.davis@yahoo.com", "555-0144", "2023-01-05", "Active", "Male", "Head", "1985-07-30", "Deacon and finance helper.", "Deacon"],
-      ["Linda", "Wilson", "linda.w@gmail.com", "555-0155", "2022-09-01", "Active", "Female", "Spouse", "1988-10-14", "Worship Choir lead singer.", "Choral Director"],
-      ["Emily", "Davis", "emily.davis@gmail.com", "555-0146", "2023-01-05", "Active", "Female", "Child", "2013-05-12", "Daughter of Robert Davis.", "Member"],
-      ["Michael", "Miller", "michael.m@yahoo.com", "555-0199", "2026-05-15", "Visitor", "Male", "Single", "1992-03-24", "Visited during the youth concert event.", "Visitor"],
+      ["Newton", "Atela", "apostle.atela@graceflow.org", "555-0100", "2021-01-15", "Active", "Male", "Head", "1978-04-12", "Senior Apostle and founder.", "Apostle", 1, 1],
+      ["Sarah", "Doe", "sarah.doe@gmail.com", "555-0101", "2021-01-15", "Active", "Female", "Spouse", "1981-08-22", "Sunday School coordinator.", "Pastor", 1, 3],
+      ["James", "Smith", "james.smith@hotmail.com", "555-0122", "2022-03-10", "Active", "Male", "Single", "1995-11-05", "Youth coordinator and band player.", "Youth Leader", 1, 2],
+      ["Mary", "Johnson", "mary.j@outlook.com", "555-0133", "2021-06-20", "Active", "Female", "Head", "1969-02-17", "Ushering ministry chairperson.", "Deaconess", 1, 1],
+      ["Robert", "Davis", "robert.davis@yahoo.com", "555-0144", "2023-01-05", "Active", "Male", "Head", "1985-07-30", "Deacon and finance helper.", "Deacon", 1, 4],
+      ["Linda", "Wilson", "linda.w@gmail.com", "555-0155", "2022-09-01", "Active", "Female", "Spouse", "1988-10-14", "Worship Choir lead singer.", "Choral Director", 1, 3],
+      ["Emily", "Davis", "emily.davis@gmail.com", "555-0146", "2023-01-05", "Active", "Female", "Child", "2013-05-12", "Daughter of Robert Davis.", "Member", 1, 2],
+      ["Michael", "Miller", "michael.m@yahoo.com", "555-0199", "2026-05-15", "Visitor", "Male", "Single", "1992-03-24", "Visited during the youth concert event.", "Visitor", 1, null],
     ];
 
     for (const m of membersList) {
       await db.run(
-        `INSERT INTO members (first_name, last_name, email, phone, join_date, status, gender, family_role, birth_date, notes, title)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO members (first_name, last_name, email, phone, join_date, status, gender, family_role, birth_date, notes, title, branch_id, cell_group_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         m
       );
     }
@@ -294,11 +370,33 @@ async function startServer() {
     ];
 
     for (const c of contributionsList) {
-      await db.run(
+      const result = await db.run(
         `INSERT INTO contributions (member_id, amount, type, date, payment_method, notes)
          VALUES (?, ?, ?, ?, ?, ?)`,
         c
       );
+
+      // Seed logic to assign/update Registration Number if payment is for Annual Registration
+      const member_id = c[0] as number | null;
+      const type = c[2] as string;
+      const date = c[3] as string;
+
+      if (type === "Annual Registration" && member_id) {
+        const payDate = new Date(date);
+        const year = isNaN(payDate.getTime()) ? new Date().getFullYear() : payDate.getFullYear();
+        const prefix = `GIMK/REG/${year}/`;
+        
+        // For seeding, we force generation/update to ensure 001 format
+        const lastReg = await db.get("SELECT registration_number FROM members WHERE registration_number LIKE ? ORDER BY length(registration_number) DESC, registration_number DESC LIMIT 1", [`${prefix}%`]);
+        let nextSeq = 1;
+        if (lastReg && lastReg.registration_number) {
+          const parts = lastReg.registration_number.split('/');
+          const lastNum = parseInt(parts[parts.length - 1], 10);
+          if (!isNaN(lastNum)) nextSeq = lastNum + 1;
+        }
+        const regNo = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+        await db.run("UPDATE members SET registration_number = ? WHERE id = ?", [regNo, member_id]);
+      }
     }
 
     // 7. Events
@@ -316,31 +414,6 @@ async function startServer() {
       `INSERT INTO events (title, description, date, start_time, end_time, location, ministry_id)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       ["Youth Outdoor Picnic", "Barbecue, Frisbee and fireside testimonies.", "2026-06-06", "11:00", "16:00", "Riverside Grace Park", 2]
-    );
-
-    // 8. Branches
-    await db.run(`INSERT INTO branches (name, location, pastor, date_opened, contact_phone, member_count) VALUES (?, ?, ?, ?, ?, ?)`, 
-      ["Ramba-Kabondo Headquarters", "Ramba, Kabondo, Homa Bay County, Kenya", "Apostle Newton Atela", "2010-01-10", "+254 712 345678", 350]
-    );
-    await db.run(`INSERT INTO branches (name, location, pastor, date_opened, contact_phone, member_count) VALUES (?, ?, ?, ?, ?, ?)`, 
-      ["Nairobi Branch", "Umoja, Nairobi, Kenya", "Rev. Joseph Omwamba", "2015-08-15", "+254 722 987654", 120]
-    );
-    await db.run(`INSERT INTO branches (name, location, pastor, date_opened, contact_phone, member_count) VALUES (?, ?, ?, ?, ?, ?)`, 
-      ["Mombasa Outreach", "Mtwapa, Mombasa, Kenya", "Evangelist Mary Atieno", "2019-11-20", "+254 733 111222", 75]
-    );
-
-    // 9. Cell Groups (HQ Ramba-Kabondo)
-    await db.run(`INSERT INTO cell_groups (name, leader_name, meeting_day, meeting_time, location_details, members_count) VALUES (?, ?, ?, ?, ?, ?)`,
-      ["Ramba Faith Prayer Cell", "Elder John Ochieng", "Wednesday", "17:30", "Ramba Village Crossroads", 25]
-    );
-    await db.run(`INSERT INTO cell_groups (name, leader_name, meeting_day, meeting_time, location_details, members_count) VALUES (?, ?, ?, ?, ?, ?)`,
-      ["Kabondo Youth Bible Circle", "Brother James Smith", "Thursday", "18:00", "Kabondo Market Square Hall", 18]
-    );
-    await db.run(`INSERT INTO cell_groups (name, leader_name, meeting_day, meeting_time, location_details, members_count) VALUES (?, ?, ?, ?, ?, ?)`,
-      ["Ramba Grace Fellowship", "Sister Sarah Doe", "Tuesday", "17:00", "Ramba Community Assembly Point", 30]
-    );
-    await db.run(`INSERT INTO cell_groups (name, leader_name, meeting_day, meeting_time, location_details, members_count) VALUES (?, ?, ?, ?, ?, ?)`,
-      ["Kabondo Family Outreach", "Deacon Robert Davis", "Saturday", "16:30", "Robert's Residence, Kabondo", 22]
     );
 
     // 10. Expenditures
@@ -435,6 +508,38 @@ async function startServer() {
     console.log("Hymns library seeded successfully.");
   }
 
+  // RECONCILE REGISTRATION NUMBERS (Ensures 001, 002, 003 sequence for existing data)
+  const reconcileRegistrations = async () => {
+    // Wipe existing registration numbers to allow for a clean, fresh sequence rebuild
+    await db.run("UPDATE members SET registration_number = NULL");
+
+    const payments = await db.all(`
+      SELECT c.member_id, c.date, m.registration_number
+      FROM contributions c
+      JOIN members m ON c.member_id = m.id
+      WHERE c.type = 'Annual Registration' AND c.member_id IS NOT NULL
+      ORDER BY c.date ASC, c.id ASC
+    `);
+
+    if (payments.length > 0) {
+      console.log(`[System] Reconciling ${payments.length} registration records...`);
+      const sequences: Record<number, number> = {};
+      for (const p of payments) {
+        const payDate = new Date(p.date);
+        const year = isNaN(payDate.getTime()) ? new Date().getFullYear() : payDate.getFullYear();
+        
+        if (!sequences[year]) sequences[year] = 1;
+        
+        const prefix = `GIMK/REG/${year}/`;
+        const regNo = `${prefix}${String(sequences[year]).padStart(3, '0')}`;
+        
+        await db.run("UPDATE members SET registration_number = ? WHERE id = ?", [regNo, p.member_id]);
+        sequences[year]++;
+      }
+    }
+  };
+  await reconcileRegistrations();
+
   // ----------------------------------------------------
   // API Endpoints
   // ----------------------------------------------------
@@ -513,10 +618,14 @@ async function startServer() {
     try {
       const rows = await db.all(`
         SELECT m.*, 
-               GROUP_CONCAT(min.name, ', ') as ministries_list
+               GROUP_CONCAT(min.name, ', ') as ministries_list,
+               b.name as branch_name,
+               cg.name as cell_group_name
         FROM members m
         LEFT JOIN member_ministries mm ON m.id = mm.member_id
         LEFT JOIN ministries min ON mm.ministry_id = min.id
+        LEFT JOIN branches b ON m.branch_id = b.id
+        LEFT JOIN cell_groups cg ON m.cell_group_id = cg.id
         GROUP BY m.id
         ORDER BY m.first_name ASC
       `);
@@ -526,9 +635,36 @@ async function startServer() {
     }
   });
 
+  // BULK DELETE MEMBERS
+  app.delete("/api/members/bulk-delete", async (req, res) => {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: "No member IDs provided for bulk deletion." });
+    }
+    try {
+      const placeholders = ids.map(() => "?").join(",");
+      console.log(`[Bulk Delete Members] Executing SQL: DELETE FROM members WHERE id IN (${placeholders})`);
+      console.log(`[Bulk Delete Members] With parameters:`, ids);
+      const result = await db.run(`DELETE FROM members WHERE id IN (${placeholders})`, ids);
+      if (result.changes === 0) {
+        console.warn(`[Bulk Delete Members] No records found matching IDs: ${ids}`);
+        return res.status(404).json({ error: "No members found with the provided IDs." });
+      }
+      res.json({ message: `${result.changes} members and associated relations deleted successfully.` });
+    } catch (err: any) {
+      console.error("[Bulk Delete Members] Critical Error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.get("/api/members/:id", async (req, res) => {
     try {
-      const member = await db.get("SELECT * FROM members WHERE id = ?", [req.params.id]);
+      const member = await db.get(`
+        SELECT m.*, b.name as branch_name, cg.name as cell_group_name
+        FROM members m
+        LEFT JOIN branches b ON m.branch_id = b.id
+        LEFT JOIN cell_groups cg ON m.cell_group_id = cg.id
+        WHERE m.id = ?`, [req.params.id]);
       if (!member) return res.status(404).json({ error: "Member not found" });
 
       const memberMinistries = await db.all(`
@@ -552,15 +688,15 @@ async function startServer() {
   });
 
   app.post("/api/members", async (req, res) => {
-    const { first_name, last_name, email, phone, join_date, status, gender, family_role, birth_date, notes, ministry_ids, title } = req.body;
+    const { first_name, last_name, email, phone, join_date, status, gender, family_role, birth_date, notes, ministry_ids, title, branch_id, cell_group_id } = req.body;
     if (!first_name || !last_name || !join_date) {
       return res.status(400).json({ error: "First name, Last name and Join date are required." });
     }
     try {
       const result = await db.run(`
-        INSERT INTO members (first_name, last_name, email, phone, join_date, status, gender, family_role, birth_date, notes, title)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `, [first_name, last_name, email || null, phone || null, join_date, status || "Active", gender || null, family_role || "Single", birth_date || null, notes || null, title || null]);
+        INSERT INTO members (first_name, last_name, email, phone, join_date, status, gender, family_role, birth_date, notes, title, branch_id, cell_group_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `, [first_name, last_name, email || null, phone || null, join_date, status || "Active", gender || null, family_role || "Single", birth_date || null, notes || null, title || null, branch_id || null, cell_group_id || null]);
 
       const newId = result.lastID;
 
@@ -578,7 +714,7 @@ async function startServer() {
   });
 
   app.put("/api/members/:id", async (req, res) => {
-    const { first_name, last_name, email, phone, join_date, status, gender, family_role, birth_date, notes, ministry_ids, title } = req.body;
+    const { first_name, last_name, email, phone, join_date, status, gender, family_role, birth_date, notes, ministry_ids, title, branch_id, cell_group_id } = req.body;
     const { id } = req.params;
     if (!first_name || !last_name || !join_date) {
       return res.status(400).json({ error: "First name, Last name and Join date are required." });
@@ -589,9 +725,9 @@ async function startServer() {
 
       await db.run(`
         UPDATE members 
-        SET first_name = ?, last_name = ?, email = ?, phone = ?, join_date = ?, status = ?, gender = ?, family_role = ?, birth_date = ?, notes = ?, title = ?
+        SET first_name = ?, last_name = ?, email = ?, phone = ?, join_date = ?, status = ?, gender = ?, family_role = ?, birth_date = ?, notes = ?, title = ?, branch_id = ?, cell_group_id = ?
         WHERE id = ?
-      `, [first_name, last_name, email || null, phone || null, join_date, status, gender || null, family_role, birth_date || null, notes || null, title || null, id]);
+      `, [first_name, last_name, email || null, phone || null, join_date, status, gender || null, family_role, birth_date || null, notes || null, title || null, branch_id || null, cell_group_id || null, id]);
 
       // Refresh ministry relations
       await db.run("DELETE FROM member_ministries WHERE member_id = ?", [id]);
@@ -609,7 +745,9 @@ async function startServer() {
 
   app.delete("/api/members/:id", async (req, res) => {
     try {
-      const result = await db.run("DELETE FROM members WHERE id = ?", [req.params.id]);
+      const memberId = parseInt(req.params.id, 10);
+      if (isNaN(memberId)) return res.status(400).json({ error: "Invalid ID" });
+      const result = await db.run("DELETE FROM members WHERE id = ?", memberId);
       if (result.changes === 0) {
         return res.status(404).json({ error: "Member not found" });
       }
@@ -617,6 +755,97 @@ async function startServer() {
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
+  });
+
+  // IMPORT MEMBERS FROM CSV
+  app.post("/api/members/import", upload.single('file'), async (req: any, res) => {
+    if (!req.file && !(req as any).file) {
+      return res.status(400).json({ error: "No CSV file uploaded." });
+    }
+
+    const csvString = req.file.buffer.toString('utf8');
+    const results: any[] = [];
+    const errors: any[] = [];
+
+    const stream = require('stream');
+    const bufferStream = new stream.PassThrough();
+    bufferStream.end(csvString);
+
+    bufferStream
+      .pipe(csv())
+      .on('data', (data: any) => results.push(data))
+      .on('end', async () => {
+        let importedCount = 0;
+        for (const row of results) {
+          try {
+            // Basic validation and mapping
+            const {
+              'First Name': first_name,
+              'Last Name': last_name,
+              'Email': email,
+              'Phone': phone,
+              'Join Date': join_date,
+              'Status': status,
+              'Gender': gender,
+              'Family Role': family_role,
+              'Birth Date': birth_date,
+              'Notes': notes,
+              'Title': title,
+              'Branch ID': branch_id_str,
+              'Cell Group ID': cell_group_id_str,
+              'Ministry IDs': ministry_ids_str
+            } = row;
+
+            if (!first_name || !last_name || !join_date) {
+              errors.push({ row, error: "Missing required fields: First Name, Last Name, Join Date" });
+              continue;
+            }
+
+            const result = await db.run(`
+              INSERT INTO members (first_name, last_name, email, phone, join_date, status, gender, family_role, birth_date, notes, title, branch_id, cell_group_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `, [
+              first_name,
+              last_name,
+              email || null,
+              phone || null,
+              join_date,
+              status || "Active",
+              gender || null,
+              family_role || "Single",
+              birth_date || null,
+              notes || null,
+              title || null,
+              branch_id_str ? parseInt(branch_id_str, 10) : null,
+              cell_group_id_str ? parseInt(cell_group_id_str, 10) : null
+            ]);
+
+            const newId = result.lastID;
+
+            // Handle ministries mapping if specified in CSV
+            if (ministry_ids_str) {
+              const ministry_ids = ministry_ids_str.split(',').map((id: string) => parseInt(id.trim(), 10)).filter(Number.isFinite);
+              if (ministry_ids.length > 0) {
+                for (const mId of ministry_ids) {
+                  await db.run("INSERT INTO member_ministries (member_id, ministry_id) VALUES (?, ?)", [newId, mId]);
+                }
+              }
+            }
+            importedCount++;
+          } catch (err: any) {
+            console.error(`[Member Import] Error processing row:`, row, err);
+            errors.push({ row, error: err.message });
+          }
+        }
+        if (errors.length > 0) {
+          return res.status(207).json({ message: `Import completed with ${importedCount} members imported and ${errors.length} errors.`, errors });
+        }
+        res.status(201).json({ message: `${importedCount} members imported successfully.` });
+      })
+      .on('error', (err: any) => {
+        console.error("[Member Import] CSV Parser Error:", err);
+        res.status(500).json({ error: "CSV parsing error: " + err.message });
+      });
   });
 
   // MINISTRIES ENDPOINTS
@@ -665,8 +894,13 @@ async function startServer() {
   });
 
   app.delete("/api/ministries/:id", async (req, res) => {
+    const { id } = req.params;
+    if (id === "bulk-delete") return; // Safety guard
     try {
-      const result = await db.run("DELETE FROM ministries WHERE id = ?", [req.params.id]);
+      const ministryId = parseInt(id, 10);
+      if (isNaN(ministryId)) return res.status(400).json({ error: "Invalid ministry ID." });
+
+      const result = await db.run("DELETE FROM ministries WHERE id = ?", [ministryId]);
       if (result.changes === 0) return res.status(404).json({ error: "Ministry not found" });
       res.json({ message: "Ministry deleted successfully" });
     } catch (err: any) {
@@ -771,10 +1005,13 @@ async function startServer() {
   app.get("/api/contributions", async (req, res) => {
     try {
       const rows = await db.all(`
-        SELECT c.*, 
-               m.first_name, m.last_name, m.email
+        SELECT c.*,
+               m.first_name, m.last_name, m.email, m.registration_number,
+               b.name as branch_name, cg.name as cell_group_name
         FROM contributions c
         LEFT JOIN members m ON c.member_id = m.id
+        LEFT JOIN branches b ON c.branch_id = b.id
+        LEFT JOIN cell_groups cg ON c.cell_group_id = cg.id
         ORDER BY c.date DESC, c.id DESC
       `);
       res.json(rows);
@@ -783,16 +1020,59 @@ async function startServer() {
     }
   });
 
+  // BULK DELETE CONTRIBUTIONS
+  app.delete("/api/contributions/bulk-delete", async (req, res) => {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: "No contribution IDs provided for bulk deletion." });
+    }
+    try {
+      const placeholders = ids.map(() => "?").join(",");
+      console.log(`[Bulk Delete Contributions] Executing SQL: DELETE FROM contributions WHERE id IN (${placeholders})`);
+      console.log(`[Bulk Delete Contributions] With parameters:`, ids);
+      const result = await db.run(`DELETE FROM contributions WHERE id IN (${placeholders})`, ids);
+      if (result.changes === 0) {
+        console.warn(`[Bulk Delete Contributions] No records found matching IDs: ${ids}`);
+        return res.status(404).json({ error: "No contributions found with the provided IDs." });
+      }
+      res.json({ message: `${result.changes} contributions deleted successfully.` });
+    } catch (err: any) {
+      console.error("[Bulk Delete Contributions] Critical Error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   app.post("/api/contributions", async (req, res) => {
-    const { member_id, amount, type, date, payment_method, notes } = req.body;
+    const { member_id, amount, type, date, payment_method, notes, branch_id, cell_group_id } = req.body;
     if (!amount || !type || !date || !payment_method) {
       return res.status(400).json({ error: "Amount, type, date and payment method are required." });
     }
     try {
       const result = await db.run(`
-        INSERT INTO contributions (member_id, amount, type, date, payment_method, notes)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `, [member_id || null, amount, type, date, payment_method, notes || null]);
+        INSERT INTO contributions (member_id, amount, type, date, payment_method, notes, branch_id, cell_group_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `, [member_id || null, amount, type, date, payment_method, notes || null, branch_id || null, cell_group_id || null]);
+
+      // Logic to assign/update Registration Number if payment is for Annual Registration
+      if (type === "Annual Registration" && member_id) {
+        const payDate = new Date(date);
+        const year = isNaN(payDate.getTime()) ? new Date().getFullYear() : payDate.getFullYear();
+        const prefix = `GIMK/REG/${year}/`;
+        // Check if member already has a registration number for this specific year
+        const existing = await db.get("SELECT registration_number FROM members WHERE id = ? AND registration_number LIKE ?", [member_id, `${prefix}%`]);
+        if (!existing || !existing.registration_number) {
+          const lastReg = await db.get("SELECT registration_number FROM members WHERE registration_number LIKE ? ORDER BY length(registration_number) DESC, registration_number DESC LIMIT 1", [`${prefix}%`]);
+          let nextSeq = 1;
+          if (lastReg && lastReg.registration_number) {
+            const parts = lastReg.registration_number.split('/');
+            const lastNum = parseInt(parts[parts.length - 1], 10);
+            if (!isNaN(lastNum)) nextSeq = lastNum + 1;
+          }
+          const regNo = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+          await db.run("UPDATE members SET registration_number = ? WHERE id = ?", [regNo, member_id]);
+        }
+      }
+
       res.status(201).json({ id: result.lastID });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -801,12 +1081,104 @@ async function startServer() {
 
   app.delete("/api/contributions/:id", async (req, res) => {
     try {
-      const result = await db.run("DELETE FROM contributions WHERE id = ?", [req.params.id]);
+      const contributionId = parseInt(req.params.id, 10);
+      if (isNaN(contributionId)) return res.status(400).json({ error: "Invalid contribution ID." });
+
+      const result = await db.run("DELETE FROM contributions WHERE id = ?", contributionId);
       if (result.changes === 0) return res.status(404).json({ error: "Contribution record not found" });
       res.json({ message: "Contribution record deleted successfully." });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+      console.error("[Delete Contribution] Error:", err);
     }
+  });
+
+  // IMPORT CONTRIBUTIONS FROM CSV
+  app.post("/api/contributions/import", upload.single('file'), async (req: any, res) => {
+    if (!req.file && !(req as any).file) {
+      return res.status(400).json({ error: "No CSV file uploaded." });
+    }
+
+    const csvString = req.file.buffer.toString('utf8');
+    const results: any[] = [];
+    const errors: any[] = [];
+
+    const stream = require('stream');
+    const bufferStream = new stream.PassThrough();
+    bufferStream.end(csvString);
+
+    bufferStream
+      .pipe(csv())
+      .on('data', (data: any) => results.push(data))
+      .on('end', async () => {
+        let importedCount = 0;
+        for (const row of results) {
+          try {
+            const {
+              'Member ID': member_id,
+              'Amount': amount,
+              'Type': type,
+              'Date': date,
+              'Payment Method': payment_method,
+              'Notes': notes,
+              'Branch ID': branch_id,
+              'Cell Group ID': cell_group_id
+            } = row;
+
+            if (!amount || !type || !date || !payment_method) {
+              errors.push({ row, error: "Missing required fields: Amount, Type, Date, Payment Method" });
+              continue;
+            }
+
+            const parsedAmount = parseFloat(amount);
+            if (isNaN(parsedAmount) || parsedAmount <= 0) {
+              errors.push({ row, error: "Invalid amount" });
+              continue;
+            }
+
+            const parsedMemberId = member_id ? parseInt(member_id, 10) : null;
+
+            const result = await db.run(`
+              INSERT INTO contributions (member_id, amount, type, date, payment_method, notes, branch_id, cell_group_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `, [parsedMemberId, parsedAmount, type, date, payment_method, notes || null, 
+                branch_id ? parseInt(branch_id, 10) : null, 
+                cell_group_id ? parseInt(cell_group_id, 10) : null]);
+
+            // Logic to assign/update Registration Number if payment is for Annual Registration
+            if (type === "Annual Registration" && parsedMemberId) {
+              const payDate = new Date(date);
+              const year = isNaN(payDate.getTime()) ? new Date().getFullYear() : payDate.getFullYear();
+              const prefix = `GIMK/REG/${year}/`;
+              // Check if member already has a registration number for this specific year
+              const existing = await db.get("SELECT registration_number FROM members WHERE id = ? AND registration_number LIKE ?", [parsedMemberId, `${prefix}%`]);
+              if (!existing || !existing.registration_number) {
+                const lastReg = await db.get("SELECT registration_number FROM members WHERE registration_number LIKE ? ORDER BY length(registration_number) DESC, registration_number DESC LIMIT 1", [`${prefix}%`]);
+                let nextSeq = 1;
+                if (lastReg && lastReg.registration_number) {
+                  const parts = lastReg.registration_number.split('/');
+                  const lastNum = parseInt(parts[parts.length - 1], 10);
+                  if (!isNaN(lastNum)) nextSeq = lastNum + 1;
+                }
+                const regNo = `${prefix}${String(nextSeq).padStart(3, '0')}`;
+                await db.run("UPDATE members SET registration_number = ? WHERE id = ?", [regNo, parsedMemberId]);
+              }
+            }
+            importedCount++;
+          } catch (err: any) {
+            console.error(`[Contribution Import] Error processing row:`, row, err);
+            errors.push({ row, error: err.message });
+          }
+        }
+        if (errors.length > 0) {
+          return res.status(207).json({ message: `Import completed with ${importedCount} contributions imported and ${errors.length} errors.`, errors });
+        }
+        res.status(201).json({ message: `${importedCount} contributions imported successfully.` });
+      })
+      .on('error', (err: any) => {
+        console.error("[Contribution Import] CSV Parser Error:", err);
+        res.status(500).json({ error: "CSV parsing error: " + err.message });
+      });
   });
 
   // EVENTS (CALENDAR) ENDPOINTS
@@ -1018,9 +1390,70 @@ async function startServer() {
     }
   });
 
+  // BULK DELETE EXPENDITURES
+  app.delete("/api/expenditures/bulk-delete", async (req, res) => {
+    const { ids } = req.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: "No expenditure IDs provided for bulk deletion." });
+    }
+    try {
+      const placeholders = ids.map(() => "?").join(",");
+      console.log(`[Bulk Delete Expenditures] Executing SQL: DELETE FROM expenditures WHERE id IN (${placeholders})`);
+      console.log(`[Bulk Delete Expenditures] With parameters:`, ids);
+      const result = await db.run(`DELETE FROM expenditures WHERE id IN (${placeholders})`, ids);
+      if (result.changes === 0) {
+        console.warn(`[Bulk Delete Expenditures] No records found matching IDs: ${ids}`);
+        return res.status(404).json({ error: "No expenditures found with the provided IDs." });
+      }
+      res.json({ message: `${result.changes} expenditures deleted successfully.` });
+    } catch (err: any) {
+      console.error("[Bulk Delete Expenditures] Critical Error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // IMPORT EXPENDITURES FROM CSV
+  app.post("/api/expenditures/import", upload.single('file'), async (req: any, res) => {
+    if (!req.file && !(req as any).file) return res.status(400).json({ error: "No CSV file uploaded." });
+    const csvString = req.file.buffer.toString('utf8');
+    const results: any[] = [];
+    const errors: any[] = [];
+    const stream = require('stream');
+    const bufferStream = new stream.PassThrough();
+    bufferStream.end(csvString);
+
+    bufferStream
+      .pipe(csv())
+      .on('data', (data: any) => results.push(data))
+      .on('end', async () => {
+        let importedCount = 0;
+        for (const row of results) {
+          try {
+            const { 'Title': title, 'Description': description, 'Amount': amount, 'Category': category, 'Date': date, 'Branch ID': branch_id } = row;
+            if (!title || !amount || !category || !date) {
+              errors.push({ row, error: "Missing required fields." });
+              continue;
+            }
+            const parsedAmount = parseFloat(amount);
+            if (isNaN(parsedAmount) || parsedAmount <= 0) continue;
+            await db.run(`INSERT INTO expenditures (title, description, amount, category, date, branch_id) VALUES (?, ?, ?, ?, ?, ?)`, [title, description || null, parsedAmount, category, date, branch_id ? parseInt(branch_id, 10) : null]);
+            importedCount++;
+          } catch (err: any) {
+            console.error(`[Expenditure Import] Error processing row:`, err);
+            errors.push({ row, error: err.message });
+          }
+        }
+        if (errors.length > 0) return res.status(207).json({ message: `Imported ${importedCount} items with errors.`, errors });
+        res.status(201).json({ message: `${importedCount} expenditures imported successfully.` });
+      })
+      .on('error', (err: any) => res.status(500).json({ error: "CSV parsing error: " + err.message }));
+  });
+
   app.delete("/api/expenditures/:id", async (req, res) => {
     try {
-      const result = await db.run("DELETE FROM expenditures WHERE id = ?", [req.params.id]);
+      const expenditureId = parseInt(req.params.id, 10);
+      if (isNaN(expenditureId)) return res.status(400).json({ error: "Invalid ID" });
+      const result = await db.run("DELETE FROM expenditures WHERE id = ?", expenditureId);
       if (result.changes === 0) return res.status(404).json({ error: "Expenditure not found" });
       res.json({ message: "Expenditure deleted successfully." });
     } catch (err: any) {
@@ -1039,9 +1472,11 @@ async function startServer() {
       const expenseBreakdown = await db.all("SELECT category as name, SUM(amount) as value FROM expenditures GROUP BY category");
 
       const contributionsListForLedger = await db.all(`
-        SELECT c.*, m.first_name, m.last_name
+        SELECT c.*, m.first_name, m.last_name, b.name as branch_name, cg.name as cell_group_name
         FROM contributions c
         LEFT JOIN members m ON c.member_id = m.id
+        LEFT JOIN branches b ON c.branch_id = b.id
+        LEFT JOIN cell_groups cg ON c.cell_group_id = cg.id
         ORDER BY c.date DESC
       `);
 

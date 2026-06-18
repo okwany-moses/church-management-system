@@ -16,3 +16,8 @@ declare module 'africastalking' {
 
   export default AfricaTalking;
 }
+
+declare module 'csv-parser' {
+  const content: any;
+  export default content;
+}

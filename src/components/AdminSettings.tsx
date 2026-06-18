@@ -10,7 +10,7 @@ export default function AdminSettings() {
 
   const loadUsers = async () => {
     try {
-      const data = await fetch("/api/users").then(res => res.json());
+      const data = await api.getUsers();
       setUsers(data);
     } catch (err) {
       console.error("Failed to load users", err);
@@ -23,18 +23,14 @@ export default function AdminSettings() {
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    await fetch("/api/users", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(newUser)
-    });
+    await api.addUser(newUser);
     setNewUser({ username: "", password: "", role: "admin" });
     loadUsers();
   };
 
   const handleDeleteUser = async (id: number) => {
     if (!confirm("Remove this user's access?")) return;
-    await fetch(`/api/users/${id}`, { method: "DELETE" });
+    await api.deleteUser(id);
     loadUsers();
   };
 

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api";
-import { Contribution, Member, Branch, Expenditure, LedgerSummary } from "../types";
+import { Contribution, Member, Branch, CellGroup, Expenditure, LedgerSummary } from "../types";
 import { 
   Plus, 
   Trash2, 
@@ -18,7 +18,8 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   TrendingUp,
-  Receipt,
+  UploadCloud,
+  FileText,
   FileSpreadsheet,
   Layers,
   CheckCircle,
@@ -43,13 +44,23 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
   // Entities state
   const [members, setMembers] = useState<Member[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
+  const [cellGroups, setCellGroups] = useState<CellGroup[]>([]);
   const [contributions, setContributions] = useState<Contribution[]>([]);
   const [expenditures, setExpenditures] = useState<Expenditure[]>([]);
   const [ledger, setLedger] = useState<LedgerSummary | null>(null);
 
+  // Bulk Delete states
+  const [selectedIncomeIds, setSelectedIncomeIds] = useState<number[]>([]);
+  const [selectAllIncomes, setSelectAllIncomes] = useState(false);
+  const [selectedExpenseIds, setSelectedExpenseIds] = useState<number[]>([]);
+  const [selectAllExpenses, setSelectAllExpenses] = useState(false);
+
   // Search & Filters for income
   const [incSearch, setIncSearch] = useState("");
   const [incType, setIncType] = useState("All");
+  const [incMonth, setIncMonth] = useState("All");
+  const [incYear, setIncYear] = useState("All");
+  const [incCellGroup, setIncCellGroup] = useState("All");
   const [incMethod, setIncMethod] = useState("All");
 
   // Search & Filters for expenses
@@ -61,6 +72,12 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
   const [showIncomeModal, setShowIncomeModal] = useState(false);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
 
+  // Import CSV states
+  const [showIncomeImportModal, setShowIncomeImportModal] = useState(false);
+  const [incomeCsvFile, setIncomeCsvFile] = useState<File | null>(null);
+  const [showExpenseImportModal, setShowExpenseImportModal] = useState(false);
+  const [expenseCsvFile, setExpenseCsvFile] = useState<File | null>(null);
+
   // Form State - Incomes
   const [incAmount, setIncAmount] = useState("");
   const [incTypeVal, setIncTypeVal] = useState("Tithe");
@@ -69,6 +86,11 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
   const [incNotes, setIncNotes] = useState("");
   const [incMemberId, setIncMemberId] = useState("");
   const [incIsAnonymous, setIncIsAnonymous] = useState(false);
+  const [incBranchId, setIncBranchId] = useState("");
+  const [incCellGroupId, setIncCellGroupId] = useState("");
+  // Searchable Member State
+  const [memberSearchTerm, setMemberSearchTerm] = useState("");
+  const [showMemberResults, setShowMemberResults] = useState(false);
 
   // Form State - Expenditures
   const [expTitle, setExpTitle] = useState("");
@@ -85,16 +107,18 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
   const loadData = async () => {
     try {
       setLoading(true);
-      const [contData, memData, branchData, expData, ledgerData] = await Promise.all([
+      const [contData, memData, branchData, cellData, expData, ledgerData] = await Promise.all([
         api.getContributions(),
         api.getMembers(),
         api.getBranches(),
+        api.getCellGroups(),
         api.getExpenditures(),
         api.getLedgerSummary()
       ]);
       setContributions(contData);
       setMembers(memData);
       setBranches(branchData);
+      setCellGroups(cellData);
       setExpenditures(expData);
       setLedger(ledgerData);
       setError(null);
@@ -127,16 +151,21 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
       type: incTypeVal,
       date: incDate,
       payment_method: incPaymentMethod,
-      notes: incNotes.trim() || null
+      notes: incNotes.trim() || null,
+      branch_id: incBranchId ? parseInt(incBranchId, 10) : null,
+      cell_group_id: incCellGroupId ? parseInt(incCellGroupId, 10) : null
     };
 
     try {
       await api.addContribution(payload);
       setShowIncomeModal(false);
       loadData();
+      setMemberSearchTerm("");
+      setShowMemberResults(false);
       if (onDataChange) onDataChange();
     } catch (err: any) {
       alert("Failed to submit contribution: " + err.message);
+      console.error("Failed to submit contribution:", err);
     }
   };
 
@@ -168,6 +197,7 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
       if (onDataChange) onDataChange();
     } catch (err: any) {
       alert("Failed to submit expenditure: " + err.message);
+      console.error("Failed to submit expenditure:", err);
     }
   };
 
@@ -179,6 +209,7 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
       if (onDataChange) onDataChange();
     } catch (err: any) {
       alert("Failed to delete contribution: " + err.message);
+      console.error("Failed to delete contribution:", err);
     }
   };
 
@@ -190,6 +221,7 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
       if (onDataChange) onDataChange();
     } catch (err: any) {
       alert("Failed to delete expenditure: " + err.message);
+      console.error("Failed to delete expenditure:", err);
     }
   };
 
@@ -197,10 +229,20 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
   const filteredIncomes = contributions.filter(c => {
     const contributor = c.first_name ? `${c.first_name} ${c.last_name}`.toLowerCase() : "anonymous";
     const matchesSearch = contributor.includes(incSearch.toLowerCase()) || 
-      (c.notes && c.notes.toLowerCase().includes(incSearch.toLowerCase()));
+      (c.notes && c.notes.toLowerCase().includes(incSearch.toLowerCase())) ||
+      ((c as any).registration_number && (c as any).registration_number.toLowerCase().includes(incSearch.toLowerCase()));
+    
+    const contributionDate = new Date(c.date);
+    const matchesMonth = incMonth === "All" || (contributionDate.getMonth() + 1).toString() === incMonth;
+    const matchesYear = incYear === "All" || contributionDate.getFullYear().toString() === incYear;
+
+    const matchesCellGroup = incCellGroup === "All" ||
+      (c.cell_group_id && c.cell_group_id.toString() === incCellGroup);
+
+
     const matchesType = incType === "All" || c.type === incType;
     const matchesMethod = incMethod === "All" || c.payment_method === incMethod;
-    return matchesSearch && matchesType && matchesMethod;
+    return matchesSearch && matchesType && matchesMethod && matchesMonth && matchesYear && matchesCellGroup;
   });
 
   const filteredExpenses = expenditures.filter(e => {
@@ -212,6 +254,90 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
       (expBranch !== "HQ" && e.branch_id && e.branch_id.toString() === expBranch);
     return matchesSearch && matchesCat && matchesBranch;
   });
+
+  // Searchable members for selection
+  const searchedMembers = members.filter(m => 
+    `${m.first_name} ${m.last_name}`.toLowerCase().includes(memberSearchTerm.toLowerCase()) ||
+    (m.phone && m.phone.includes(memberSearchTerm)) ||
+    ((m as any).registration_number && (m as any).registration_number.toLowerCase().includes(memberSearchTerm.toLowerCase()))
+  );
+
+  // Bulk Delete Logic
+  const toggleSelectIncome = (id: number) => {
+    setSelectedIncomeIds(prev =>
+      prev.includes(id) ? prev.filter(incomeId => incomeId !== id) : [...prev, id]
+    );
+  };
+
+  const availableYears = Array.from(new Set(contributions.map(c => new Date(c.date).getFullYear())))
+    .sort((a, b) => b - a)
+    .map(String);
+
+  const handleSelectAllIncomes = () => {
+    if (selectAllIncomes) {
+      setSelectedIncomeIds([]);
+    } else {
+      setSelectedIncomeIds(filteredIncomes.map(inc => inc.id));
+    }
+    setSelectAllIncomes(!selectAllIncomes);
+  };
+
+  const handleDeleteSelectedIncomes = async () => {
+    if (selectedIncomeIds.length === 0) {
+      alert("No contributions selected for deletion.");
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to delete ${selectedIncomeIds.length} selected contributions? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      await api.deleteContributionsBulk(selectedIncomeIds);
+      setSelectedIncomeIds([]);
+      setSelectAllIncomes(false);
+      loadData();
+      if (onDataChange) onDataChange();
+      alert(`${selectedIncomeIds.length} contributions deleted successfully.`);
+    } catch (err: any) {
+      alert("Bulk deletion failed: " + err.message);
+      console.error("Bulk deletion failed:", err);
+    }
+  };
+
+  const toggleSelectExpense = (id: number) => {
+    setSelectedExpenseIds(prev =>
+      prev.includes(id) ? prev.filter(expenseId => expenseId !== id) : [...prev, id]
+    );
+  };
+
+  const handleSelectAllExpenses = () => {
+    if (selectAllExpenses) {
+      setSelectedExpenseIds([]);
+    } else {
+      setSelectedExpenseIds(filteredExpenses.map(exp => exp.id));
+    }
+    setSelectAllExpenses(!selectAllExpenses);
+  };
+
+  const handleDeleteSelectedExpenses = async () => {
+    if (selectedExpenseIds.length === 0) {
+      alert("No expenditures selected for deletion.");
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to delete ${selectedExpenseIds.length} selected expenditures? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      await api.deleteExpendituresBulk(selectedExpenseIds);
+      setSelectedExpenseIds([]);
+      setSelectAllExpenses(false);
+      loadData();
+      if (onDataChange) onDataChange();
+      alert(`${selectedExpenseIds.length} expenditures deleted successfully.`);
+    } catch (err: any) {
+      alert("Bulk deletion failed: " + err.message);
+      console.error("Bulk deletion failed:", err);
+    }
+  };
 
   // SUM Calculations
   const totalEarnedFromTithes = contributions.filter(c => c.type === "Tithe").reduce((acc, c) => acc + c.amount, 0);
@@ -262,6 +388,8 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
         transaction: c.first_name ? `${c.first_name} ${c.last_name}` : "Anonymous Giver",
         category: c.type,
         payment_method: c.payment_method,
+        branch_name: c.branch_name,
+        cell_group_name: c.cell_group_name,
         notes: c.notes || "",
         amount: c.amount
       })),
@@ -269,6 +397,8 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
         date: e.date,
         type: "Expenditure / " + e.category,
         transaction: e.title,
+        branch_name: e.branch_name,
+        cell_group_name: null,
         category: e.category,
         payment_method: "Debit",
         notes: e.description || "",
@@ -282,7 +412,7 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
   const handleExportIncomes = () => {
     const data = filteredIncomes.map(item => ({
       date: item.date,
-      contributor: item.first_name ? `${item.first_name} ${item.last_name}` : "Anonymous Giver",
+      contributor: item.first_name ? `${item.first_name} ${item.last_name}` : `Anonymous (${item.branch_name || 'No Branch'})`,
       fund_channel: item.type,
       payment_method: item.payment_method,
       notes: item.notes || "",
@@ -302,6 +432,66 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
     }));
     downloadCSV(data, ["Date", "Title", "Category", "Branch", "Notes", "Amount"], "GIMK-Church-Expenditures-Report");
   };
+
+  // CSV Import Logic
+  const handleImportIncomeCsv = async () => {
+    if (!incomeCsvFile) {
+      alert("Please select a CSV file to upload for incomes.");
+      return;
+    }
+    try {
+      const formData = new FormData();
+      formData.append('file', incomeCsvFile);
+      const response = await api.importContributionsCsv(formData);
+      alert(response.message || "Income import successful!");
+      setShowIncomeImportModal(false);
+      loadData();
+    } catch (err: any) {
+      alert("Income import failed: " + (err.message || "Unknown error"));
+      console.error("Income import failed:", err);
+    }
+  };
+
+  const handleImportExpenseCsv = async () => {
+    if (!expenseCsvFile) {
+      alert("Please select a CSV file to upload for expenditures.");
+      return;
+    }
+    try {
+      const formData = new FormData();
+      formData.append('file', expenseCsvFile);
+      const response = await api.importExpendituresCsv(formData);
+      alert(response.message || "Expenditure import successful!");
+      setShowExpenseImportModal(false);
+      loadData();
+    } catch (err: any) {
+      alert("Expenditure import failed: " + (err.message || "Unknown error"));
+      console.error("Expenditure import failed:", err);
+    }
+  };
+
+  interface CsvImportModalProps {
+    show: boolean;
+    onClose: () => void;
+    onImport: () => void;
+    expectedHeaders: string;
+    title: string;
+    setFile: (file: File | null) => void;
+  }
+
+  // Common CSV import modal component
+  const CsvImportModal = ({ show, onClose, onImport, expectedHeaders, title, setFile }: CsvImportModalProps) => (
+    <AnimatePresence>
+      {show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-900/40 backdrop-blur-xs">
+          <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl border border-neutral-150">
+            <div className="mb-4 flex items-center justify-between border-b pb-3"><h2 className="font-display text-lg font-bold text-neutral-900">{title}</h2><button onClick={onClose} className="rounded-lg p-1 hover:bg-neutral-100 text-neutral-400 hover:text-neutral-600 transition"><X className="h-4 w-4" /></button></div>
+            <div className="space-y-4 text-xs font-sans"><p className="text-neutral-600">Upload a CSV file. Ensure your CSV has the following headers:</p><div className="bg-neutral-50 p-3 rounded-xl border border-neutral-200 text-neutral-700 font-mono text-[10px] overflow-x-auto">{expectedHeaders}</div><input type="file" accept=".csv" onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)} className="w-full text-xs text-neutral-700 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-[#C5A059] file:text-[#2D3E50] hover:file:bg-[#b08e4d] file:cursor-pointer" /><div className="flex gap-2 justify-end border-t border-[#E5E1D8] pt-4"><button type="button" onClick={onClose} className="h-10 rounded-xl border border-[#E5E1D8] bg-white hover:bg-[#F5F2ED] px-4 font-bold uppercase tracking-wider text-[#2D3E50] transition cursor-pointer">Cancel</button><button type="button" onClick={onImport} className="h-10 rounded-xl bg-[#2D3E50] hover:bg-[#1e2a36] px-5 font-bold uppercase tracking-wider text-[#C5A059] transition cursor-pointer shadow-sm shadow-[#2D3E50]/15"><UploadCloud className="h-4 w-4" />Upload & Import</button></div></div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
 
   return (
     <div className="space-y-6 font-sans text-xs">
@@ -329,6 +519,8 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                 setIncNotes("");
                 setIncMemberId("");
                 setIncIsAnonymous(false);
+                setMemberSearchTerm("");
+                setShowMemberResults(false);
                 setShowIncomeModal(true);
               }}
               className="h-10 rounded-xl bg-[#2D3E50] hover:bg-[#1e2a36] px-4 font-bold uppercase tracking-wider text-[#C5A059] flex items-center gap-2 transition cursor-pointer shadow-sm shadow-[#2D3E50]/15"
@@ -351,6 +543,16 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
               <Plus className="h-4 w-4 text-amber-700" />
               File Church Expenditure
             </button>
+            <button
+              onClick={() => setShowIncomeImportModal(true)}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-[#E5E1D8] bg-white px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#636E72] hover:bg-neutral-50 hover:text-neutral-900 transition cursor-pointer"
+              title="Import contributions from CSV file"
+            >
+              <UploadCloud className="h-4 w-4 text-blue-600" />
+              <span>Import Income CSV</span>
+            </button>
+
+
           </>
         )}
         </div>
@@ -510,7 +712,7 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                               <Cell key={`cell-${index}`} fill={colorsList[index % colorsList.length]} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(value: number) => formatKES(value)} />
+                          <Tooltip formatter={(value: any) => formatKES(Number(value || 0))} />
                           <Legend wrapperStyle={{ fontSize: "10px", fontWeight: "bold" }} />
                         </PieChart>
                       </ResponsiveContainer>
@@ -542,7 +744,7 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                               <Cell key={`cell-${index}`} fill={colorsList[(index + 3) % colorsList.length]} />
                             ))}
                           </Pie>
-                          <Tooltip formatter={(value: number) => formatKES(value)} />
+                          <Tooltip formatter={(value: any) => formatKES(Number(value || 0))} />
                           <Legend wrapperStyle={{ fontSize: "10px", fontWeight: "bold" }} />
                         </PieChart>
                       </ResponsiveContainer>
@@ -579,6 +781,7 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                         <th className="px-3">Type</th>
                         <th className="px-3">Entry Name / Details</th>
                         <th className="px-3">Category / Fund</th>
+                        <th className="px-3">Affiliation (Branch/Cell)</th>
                         <th className="px-3">Posting Date</th>
                         <th className="px-3">Clearance Mode</th>
                         <th className="px-3 text-right">Amount (KES)</th>
@@ -590,6 +793,8 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                           isIncome: true,
                           title: c.first_name ? `${c.first_name} ${c.last_name}` : "Anonymous Giver",
                           sub: c.notes || "No notes",
+                          branch: c.branch_name || "Unknown",
+                          cell: c.cell_group_name,
                           category: c.type,
                           date: c.date,
                           method: c.payment_method,
@@ -600,6 +805,8 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                           isIncome: false,
                           title: e.title,
                           sub: e.description || e.branch_name || "General HQ Expenditure",
+                          branch: e.branch_name || "HQ",
+                          cell: null,
                           category: e.category,
                           date: e.date,
                           method: "Bank Account Debit",
@@ -629,6 +836,12 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                             </td>
                             <td className="px-3">
                               <span className="font-semibold text-[#636E72]">{item.category}</span>
+                            </td>
+                            <td className="px-3">
+                              <span className="text-[10px] font-bold text-[#2D3E50] block">{item.branch}</span>
+                              {item.cell && (
+                                <span className="text-[9px] text-emerald-600 block">{item.cell}</span>
+                              )}
                             </td>
                             <td className="px-3 font-mono text-neutral-400">{item.date}</td>
                             <td className="px-3 text-[#A0A0A0] text-[10px]">{item.method}</td>
@@ -668,6 +881,23 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  {isAdmin && selectedIncomeIds.length > 0 && (
+                    <button onClick={handleDeleteSelectedIncomes} className="inline-flex items-center gap-1.5 rounded-xl bg-rose-500 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-rose-600 transition cursor-pointer shadow-sm shadow-rose-500/15">
+                      <Trash2 className="h-4 w-4" />
+                      <span>Delete Selected ({selectedIncomeIds.length})</span>
+                    </button>
+                  )}
+                  {isAdmin && (
+                    <button
+                      onClick={() => setShowIncomeImportModal(true)}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-[#E5E1D8] bg-white px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#636E72] hover:bg-neutral-50 hover:text-neutral-900 transition cursor-pointer"
+                      title="Import contributions from CSV file"
+                    >
+                      <UploadCloud className="h-4 w-4 text-blue-600" />
+                      <span>Import CSV</span>
+                    </button>
+                  )}
+
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10px] uppercase font-bold text-[#636E72]">Dues Type:</span>
                     <select
@@ -701,6 +931,66 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                     </select>
                   </div>
 
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] uppercase font-bold text-[#636E72]">Month:</span>
+                    <select
+                      value={incMonth}
+                      onChange={(e) => setIncMonth(e.target.value)}
+                      className="h-8 rounded-lg bg-neutral-50 border border-neutral-200 px-2 text-[10px] font-semibold cursor-pointer text-neutral-600"
+                    >
+                      <option value="All">All Months</option>
+                      <option value="1">January</option>
+                      <option value="2">February</option>
+                      <option value="3">March</option>
+                      <option value="4">April</option>
+                      <option value="5">May</option>
+                      <option value="6">June</option>
+                      <option value="7">July</option>
+                      <option value="8">August</option>
+                      <option value="9">September</option>
+                      <option value="10">October</option>
+                      <option value="11">November</option>
+                      <option value="12">December</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] uppercase font-bold text-[#636E72]">Year:</span>
+                    <select
+                      value={incYear}
+                      onChange={(e) => setIncYear(e.target.value)}
+                      className="h-8 rounded-lg bg-neutral-50 border border-neutral-200 px-2 text-[10px] font-semibold cursor-pointer text-neutral-600"
+                    >
+                      <option value="All">All Years</option>
+                      {availableYears.map(year => (
+                        <option key={year} value={year}>{year}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] uppercase font-bold text-[#636E72]">Cell Group:</span>
+                    <select
+                      value={incCellGroup}
+                      onChange={(e) => setIncCellGroup(e.target.value)}
+                      className="h-8 rounded-lg bg-neutral-50 border border-neutral-200 px-2 text-[10px] font-semibold cursor-pointer text-neutral-600"
+                    >
+                      <option value="All">All Cell Groups</option>
+                      {cellGroups.map(cg => (
+                        <option key={cg.id} value={cg.id}>{cg.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+
+
+
+
+
+
+
+
+
                   <button
                     onClick={handleExportIncomes}
                     disabled={filteredIncomes.length === 0}
@@ -724,12 +1014,22 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                     <table className="w-full text-left">
                       <thead>
                         <tr className="border-b border-[#E5E1D8] text-[9px] font-bold uppercase tracking-wider text-[#636E72] bg-[#FDFCF8] h-10">
+                          {isAdmin && (
+                            <th className="py-4 px-3">
+                              <input
+                                type="checkbox"
+                                checked={selectAllIncomes}
+                                onChange={handleSelectAllIncomes}
+                                className="h-4 w-4 rounded border-gray-300 text-[#C5A059] focus:ring-[#C5A059]" />
+                            </th>)}
                           <th className="px-4">Contributor Member</th>
                           <th className="px-4">Posted Group</th>
                           <th className="px-4">Clearing Mode</th>
+                          <th className="px-4">Affiliation</th>
                           <th className="px-4">Clearance Date</th>
                           <th className="px-4">Description Memo</th>
                           <th className="px-4 text-right">Amount (KES)</th>
+                          {/* Only show actions column if admin */}
                           <th className="px-4 text-center">Actions</th>
                         </tr>
                       </thead>
@@ -737,8 +1037,21 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                         {filteredIncomes.map(item => (
                           <tr key={item.id} className="h-11 hover:bg-[#FDFCF8] text-[#2D3E50]">
                             <td className="px-4">
+                              {isAdmin && (
+                                <input
+                                  type="checkbox"
+                                  checked={selectedIncomeIds.includes(item.id)}
+                                  onChange={() => toggleSelectIncome(item.id)}
+                                  className="h-4 w-4 rounded border-gray-300 text-[#C5A059] focus:ring-[#C5A059] mr-2"
+                                />
+                              )}
                               {item.first_name ? (
-                                <span className="font-bold">{item.first_name} {item.last_name}</span>
+                                <div className="flex flex-col">
+                                  <span className="font-bold">{item.first_name} {item.last_name}</span>
+                                  {(item as any).registration_number && (
+                                    <span className="text-[9px] font-black text-[#C5A059] uppercase tracking-tighter leading-none">{(item as any).registration_number}</span>
+                                  )}
+                                </div>
                               ) : (
                                 <span className="text-[#636E72] italic font-semibold bg-neutral-50 rounded px-2 py-0.5">Anonymous Giver</span>
                               )}
@@ -749,6 +1062,10 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                               </span>
                             </td>
                             <td className="px-4 text-[10px] text-neutral-500">{item.payment_method}</td>
+                            <td className="px-4">
+                              <div className="text-[10px] font-bold">{item.branch_name || "—"}</div>
+                              <div className="text-[9px] text-emerald-600">{item.cell_group_name || ""}</div>
+                            </td>
                             <td className="px-4 font-mono text-neutral-400">{item.date}</td>
                             <td className="px-4 text-[11px] text-[#2D3436] max-w-[200px] truncate">{item.notes || "—"}</td>
                             <td className="px-4 text-right text-emerald-600 font-bold text-xs">{formatKES(item.amount)}</td>
@@ -797,6 +1114,22 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  {isAdmin && selectedExpenseIds.length > 0 && (
+                    <button onClick={handleDeleteSelectedExpenses} className="inline-flex items-center gap-1.5 rounded-xl bg-rose-500 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white hover:bg-rose-600 transition cursor-pointer shadow-sm shadow-rose-500/15">
+                      <Trash2 className="h-4 w-4" />
+                      <span>Delete Selected ({selectedExpenseIds.length})</span>
+                    </button>
+                  )}
+                  {isAdmin && (
+                    <button
+                      onClick={() => setShowExpenseImportModal(true)}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-[#E5E1D8] bg-white px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#636E72] hover:bg-neutral-50 hover:text-neutral-900 transition cursor-pointer"
+                      title="Import expenditures from CSV file"
+                    >
+                      <UploadCloud className="h-4 w-4 text-blue-600" />
+                      <span>Import CSV</span>
+                    </button>
+                  )}
                   <div className="flex items-center gap-1.5">
                     <span className="text-[10px] uppercase font-bold text-[#636E72]">Category:</span>
                     <select
@@ -853,12 +1186,21 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                     <table className="w-full text-left">
                       <thead>
                         <tr className="border-b border-[#E5E1D8] text-[9px] font-bold uppercase tracking-wider text-[#636E72] bg-[#FDFCF8] h-10">
+                          {isAdmin && (
+                            <th className="py-4 px-3">
+                              <input
+                                type="checkbox"
+                                checked={selectAllExpenses}
+                                onChange={handleSelectAllExpenses}
+                                className="h-4 w-4 rounded border-gray-300 text-[#C5A059] focus:ring-[#C5A059]" />
+                            </th>)}
                           <th className="px-4">Expenditure Account Details</th>
                           <th className="px-4">Allocated Category</th>
                           <th className="px-4">Posting Date</th>
                           <th className="px-4">Responsible Branch</th>
                           <th className="px-4">Additional Details</th>
                           <th className="px-4 text-right">Amount (KES)</th>
+                          {/* Only show actions column if admin */}
                           <th className="px-4 text-center">Actions</th>
                         </tr>
                       </thead>
@@ -866,6 +1208,14 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                         {filteredExpenses.map(item => (
                           <tr key={item.id} className="h-11 hover:bg-[#FDFCF8] text-[#2D3E50]">
                             <td className="px-4">
+                              {isAdmin && (
+                                <input
+                                  type="checkbox"
+                                  checked={selectedExpenseIds.includes(item.id)}
+                                  onChange={() => toggleSelectExpense(item.id)}
+                                  className="h-4 w-4 rounded border-gray-300 text-[#C5A059] focus:ring-[#C5A059] mr-2"
+                                />
+                              )}
                               <span className="font-bold text-[11px] block">{item.title}</span>
                             </td>
                             <td className="px-4">
@@ -939,23 +1289,106 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                   />
                 </div>
 
-                {/* Member Selector */}
+                {/* Member Search & Selector */}
                 {!incIsAnonymous && (
-                  <div>
-                    <label className="block font-bold text-[#636E72] mb-1">Select Contributor Member *</label>
-                    <select
-                      required
-                      value={incMemberId}
-                      onChange={(e) => setIncMemberId(e.target.value)}
-                      className="w-full h-10 rounded-xl bg-neutral-50 border border-neutral-300/85 px-2.5 focus:outline-none focus:border-[#C5A059] focus:bg-white text-xs font-semibold cursor-pointer transition text-[#2D3E50]"
-                    >
-                      <option value="">-- Choose Member --</option>
-                      {members.map(m => (
-                        <option key={m.id} value={m.id}>{m.first_name} {m.last_name} ({m.status})</option>
-                      ))}
-                    </select>
+                  <div className="relative">
+                    <label className="block font-bold text-[#636E72] mb-1">Search & Select Contributor Member *</label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-3 h-3.5 w-3.5 text-neutral-400" />
+                      <input
+                        type="text"
+                        placeholder="Search by name or phone..."
+                        value={memberSearchTerm}
+                        onFocus={() => setShowMemberResults(true)}
+                        onChange={(e) => {
+                          setMemberSearchTerm(e.target.value);
+                          setShowMemberResults(true);
+                        }}
+                        className="w-full h-10 rounded-xl bg-neutral-50 border border-neutral-300/85 pl-9 pr-3.5 focus:outline-none focus:border-[#C5A059] focus:bg-white text-xs font-semibold transition text-[#2D3E50]"
+                      />
+                    </div>
+                    
+                    {/* Selected Member Indicator */}
+                    {incMemberId && !showMemberResults && (
+                      <div className="mt-2 p-2 bg-emerald-50 border border-emerald-100 rounded-lg flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-emerald-800">
+                          Selected: {members.find(m => m.id.toString() === incMemberId)?.first_name} {members.find(m => m.id.toString() === incMemberId)?.last_name}
+                        </span>
+                        <button type="button" onClick={() => {setIncMemberId(""); setMemberSearchTerm("");}} className="text-emerald-600 hover:text-emerald-800 cursor-pointer"><X className="h-3 w-3"/></button>
+                      </div>
+                    )}
+
+                    {/* Results Dropdown */}
+                    <AnimatePresence>
+                      {showMemberResults && memberSearchTerm.length > 0 && (
+                        <>
+                          <div className="fixed inset-0 z-[55]" onClick={() => setShowMemberResults(false)} />
+                          <motion.div 
+                            initial={{ opacity: 0, y: -5 }} 
+                            animate={{ opacity: 1, y: 0 }} 
+                            exit={{ opacity: 0, y: -5 }}
+                            className="absolute z-[60] mt-1 w-full bg-white border border-neutral-200 rounded-xl shadow-xl max-h-48 overflow-y-auto divide-y divide-neutral-50"
+                          >
+                            {searchedMembers.length === 0 ? (
+                              <div className="p-4 text-center text-neutral-400 italic">No members found.</div>
+                            ) : (
+                              searchedMembers.map(m => (
+                                <button
+                                  key={m.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setIncMemberId(m.id.toString());
+                                    setIncBranchId(m.branch_id?.toString() || "");
+                                    setIncCellGroupId(m.cell_group_id?.toString() || "");
+                                    setMemberSearchTerm(`${m.first_name} ${m.last_name}`);
+                                    setShowMemberResults(false);
+                                  }}
+                                  className="w-full text-left p-3 hover:bg-neutral-50 flex items-center justify-between transition group cursor-pointer"
+                                >
+                                  <div>
+                                    <div className="font-bold text-[#2D3E50]">{m.first_name} {m.last_name}</div>
+                                    <div className="text-[10px] text-neutral-500">
+                                      {(m as any).registration_number && <span className="text-[#C5A059] font-bold mr-1">[{(m as any).registration_number}]</span>}
+                                      {m.branch_name || "No Branch"} • {m.phone || "No Phone"}
+                                    </div>
+                                  </div>
+                                  <div className="text-[9px] font-bold text-[#C5A059] uppercase opacity-0 group-hover:opacity-100 transition">Select</div>
+                                </button>
+                              ))
+                            )}
+                          </motion.div>
+                        </>
+                      )}
+                    </AnimatePresence>
                   </div>
                 )}
+
+                {/* Branch and Cell Group Affiliation */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="block font-bold text-[#636E72] mb-1">Affiliated Branch</label>
+                    <select
+                      value={incBranchId}
+                      onChange={(e) => setIncBranchId(e.target.value)}
+                      className="w-full h-10 rounded-xl bg-neutral-50 border border-neutral-300/85 px-2.5 focus:outline-none focus:border-[#C5A059] focus:bg-white text-xs font-semibold cursor-pointer transition text-[#2D3E50]"
+                    >
+                      <option value="">-- Select Branch --</option>
+                      {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-[#636E72] mb-1">Affiliated Cell Group</label>
+                    <select
+                      value={incCellGroupId}
+                      onChange={(e) => setIncCellGroupId(e.target.value)}
+                      className="w-full h-10 rounded-xl bg-neutral-50 border border-neutral-300/85 px-2.5 focus:outline-none focus:border-[#C5A059] focus:bg-white text-xs font-semibold cursor-pointer transition text-[#2D3E50]"
+                    >
+                      <option value="">-- Select Cell Group --</option>
+                      {cellGroups.map(cg => <option key={cg.id} value={cg.id}>{cg.name}</option>)}
+                    </select>
+                  </div>
+                </div>
 
                 {/* Amount and Type */}
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -1214,7 +1647,12 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDeleteIncome(deletingIncomeId)}
+                  onClick={() => {
+                    const id = deletingIncomeId;
+                    if (id !== null) {
+                      handleDeleteIncome(id);
+                    }
+                  }}
                   className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg font-black transition cursor-pointer font-sans"
                 >
                   Void Transaction
@@ -1252,7 +1690,12 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleDeleteExpense(deletingExpenseId)}
+                  onClick={() => {
+                    const id = deletingExpenseId;
+                    if (id !== null) {
+                      handleDeleteExpense(id);
+                    }
+                  }}
                   className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg transition cursor-pointer"
                 >
                   Yes, Void Expense

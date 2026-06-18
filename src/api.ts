@@ -1,12 +1,13 @@
-import { Member, Ministry, Contribution, AttendanceSession, AttendanceRecord, ChurchEvent, DashboardStats, Branch, CellGroup, Expenditure, SmsLog, VideoCallLog, LedgerSummary, Sermon, PrayerRequest } from "./types";
+import { Member, Ministry, Contribution, AttendanceSession, AttendanceRecord, ChurchEvent, DashboardStats, Branch, CellGroup, Expenditure, SmsLog, VideoCallLog, LedgerSummary, Sermon, PrayerRequest, User } from "./types";
 import { Hymn } from "./data/hymns";
 
 export const API_BASE = "/api";
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const isFormData = options?.body instanceof FormData;
   const res = await fetch(`${API_BASE}${path}`, {
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...options?.headers,
     },
     ...options,
@@ -37,6 +38,14 @@ export const api = {
   }),
   deleteMember: (id: number) => request<{ message: string }>(`/members/${id}`, {
     method: "DELETE",
+  }),
+  deleteMembersBulk: (ids: number[]) => request<{ message: string }>("/members/bulk-delete", {
+    method: "DELETE",
+    body: JSON.stringify({ ids }),
+  }),
+  importMembersCsv: (formData: FormData) => request<{ message: string; errors?: any[] }>("/members/import", {
+    method: "POST",
+    body: formData,
   }),
 
   // Ministries
@@ -76,6 +85,14 @@ export const api = {
   }),
   deleteContribution: (id: number) => request<{ message: string }>(`/contributions/${id}`, {
     method: "DELETE",
+  }),
+  deleteContributionsBulk: (ids: number[]) => request<{ message: string }>("/contributions/bulk-delete", {
+    method: "DELETE",
+    body: JSON.stringify({ ids }),
+  }),
+  importContributionsCsv: (formData: FormData) => request<{ message: string; errors?: any[] }>("/contributions/import", {
+    method: "POST",
+    body: formData,
   }),
 
   // Events (Calendar)
@@ -133,6 +150,14 @@ export const api = {
   deleteExpenditure: (id: number) => request<{ message: string }>(`/expenditures/${id}`, {
     method: "DELETE",
   }),
+  deleteExpendituresBulk: (ids: number[]) => request<{ message: string }>("/expenditures/bulk-delete", {
+    method: "DELETE",
+    body: JSON.stringify({ ids }),
+  }),
+  importExpendituresCsv: (formData: FormData) => request<{ message: string; errors?: any[] }>("/expenditures/import", {
+    method: "POST",
+    body: formData,
+  }),
 
   // Accounts Ledger Balance Sheet
   getLedgerSummary: () => request<LedgerSummary>("/ledger"),
@@ -179,6 +204,16 @@ export const api = {
     body: JSON.stringify(h),
   }),
   deleteHymn: (id: number) => request<{ message: string }>(`/hymns/${id}`, {
+    method: "DELETE",
+  }),
+
+  // Users
+  getUsers: () => request<any[]>("/users"),
+  addUser: (user: any) => request<{ id: number }>("/users", {
+    method: "POST",
+    body: JSON.stringify(user),
+  }),
+  deleteUser: (id: number) => request<{ message: string }>(`/users/${id}`, {
     method: "DELETE",
   }),
 };

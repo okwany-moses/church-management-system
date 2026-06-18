@@ -15,6 +15,10 @@ export interface Member {
   birth_date: string | null;
   notes: string | null;
   ministries_list?: string;
+  branch_id?: number | null;
+  cell_group_id?: number | null;
+  branch_name?: string | null;
+  cell_group_name?: string | null;
 }
 
 export interface Ministry {
@@ -38,6 +42,10 @@ export interface Contribution {
   first_name?: string | null;
   last_name?: string | null;
   email?: string | null;
+  branch_id?: number | null;
+  cell_group_id?: number | null;
+  branch_name?: string | null;
+  cell_group_name?: string | null;
 }
 
 export interface AttendanceSession {
@@ -179,4 +187,3 @@ export interface PrayerRequest {
   status: "Pending" | "Prayed For";
   date_submitted: string;
 }
-

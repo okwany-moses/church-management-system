@@ -71,7 +71,12 @@ export async function sendSmsNotification(to: string | string[], message: string
         const errorText = await response.text();
         throw new Error(`TalkSasa API Error: ${response.status} - ${errorText}`);
       }
-      return await response.json();
+
+        const result = await response.json();
+        if (result.status === 'error') {
+          throw new Error(`TalkSasa Logic Error: ${result.message}`);
+        }
+        return result;
     }
 
     if (provider === 'CELCOMAFRICA') {
