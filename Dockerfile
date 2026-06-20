@@ -8,7 +8,10 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
-RUN npm ci --unsafe-perm
+# Force native modules to build from source inside this image (avoid downloading prebuilt binaries)
+ENV npm_config_build_from_source=true
+RUN npm ci --unsafe-perm && \
+    npm rebuild sqlite3 --build-from-source --unsafe-perm || true
 
 COPY . .
 
