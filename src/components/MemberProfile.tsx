@@ -326,7 +326,6 @@ export default function MemberProfile({ memberId }: MemberProfileProps) {
                 src={`https://api.dicebear.com/7.x/micah/svg?seed=${encodeURIComponent(activeProfile.firstName + " " + activeProfile.lastName)}&backgroundColor=f5f2ed`}
                 alt="Profile Avatar"
                 className="w-16 h-16 rounded-full border border-[#E5E1D8] bg-[#F5F2ED]"
-                referrerPolicy="no-referrer"
               />
               <h3 className="mt-3 font-bold text-lg text-[#2D3E50] tracking-tight leading-tight">
                 {activeProfile.firstName} {activeProfile.lastName}

@@ -1,4 +1,4 @@
-import { Member, Ministry, Contribution, AttendanceSession, AttendanceRecord, ChurchEvent, DashboardStats, Branch, CellGroup, Expenditure, SmsLog, VideoCallLog, LedgerSummary, Sermon, PrayerRequest, User } from "./types";
+import { Member, Ministry, Contribution, AttendanceSession, AttendanceRecord, ChurchEvent, DashboardStats, Branch, CellGroup, Expenditure, SmsLog, VideoCallLog, LedgerSummary, Sermon, PrayerRequest } from "./types";
 import { Hymn } from "./data/hymns";
 
 export const API_BASE = "/api";

@@ -17,13 +17,16 @@ const __dirname = path.dirname(__filename);
 async function startServer() {
   const app = express();
   const PORT = process.env.PORT || 3000; // Default to 3000 if not specified
+  const isDev = process.env.NODE_ENV === "development";
   const csv = require("csv-parser"); // Use require to bypass type declaration issues
   const upload = require('multer')(); // For handling file uploads (CSV)
 
   app.use(express.json());
 
   // Ensure the public/images directory exists and serve it statically
-  const imagesPath = path.join(__dirname, "public", "images");
+  const imagesPath = isDev
+    ? path.join(__dirname, "public", "images")
+    : path.join(__dirname, "images");
   if (!fs.existsSync(imagesPath)) {
     fs.mkdirSync(imagesPath, { recursive: true });
   }
@@ -1756,15 +1759,13 @@ async function startServer() {
   // Vite Integration & Asset Serving
   // ----------------------------------------------------
 
-  if (process.env.NODE_ENV !== "production") {
-    // Development Mode
+  if (isDev) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    // Production Mode
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
     app.get("*", (req, res) => {

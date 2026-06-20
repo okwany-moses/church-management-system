@@ -434,7 +434,7 @@ export default function PrayerRequests({ isAdmin = false }: PrayerRequestsProps)
             </div>
           ) : (
             <div className="space-y-4">
-              <AnimatePresence mode="popLayout text-xs">
+              <AnimatePresence mode="popLayout">
                 {filteredPrayers.map((p) => {
                   const isPending = p.status === "Pending";
                   const dateLabel = new Date(p.date_submitted).toLocaleDateString("en-US", {
@@ -465,7 +465,6 @@ export default function PrayerRequests({ isAdmin = false }: PrayerRequestsProps)
                             src={`https://api.dicebear.com/7.x/micah/svg?seed=${encodeURIComponent(p.requester_name)}&backgroundColor=e5e1d8`}
                             alt="Avatar"
                             className="w-[22px] h-[22px] rounded-full shrink-0 border border-[#E5E1D8]"
-                            referrerPolicy="no-referrer"
                           />
                           <span className="font-bold text-xs text-[#2D3E50]">
                             {p.requester_name}

@@ -675,7 +675,6 @@ Downloaded from GIMK Digital Sanctuary Pulpit on ${new Date().toLocaleDateString
                               controls 
                               autoPlay 
                               className="w-full h-full"
-                              referrerPolicy="no-referrer"
                             />
                           </div>
                         ) : (

@@ -12,9 +12,22 @@ View your app in AI Studio: https://ai.studio/apps/ab0258b8-85c2-4604-89cd-713bc
 
 **Prerequisites:**  Node.js
 
-
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. Run the app in development mode:
    `npm run dev`
+
+## Deploy to Render
+
+1. Create a new Web Service on Render using this repository.
+2. Use the following settings:
+   - Build Command: `npm install && npm run build`
+   - Start Command: `npm start`
+   - Environment: `Node`
+   - Branch: your default branch
+3. Render will use the provided `render.yaml` to configure the service.
+
+## Environment Variables
+
+- `NODE_ENV=production`
+- `PORT=10000` (Render injects its own port automatically)

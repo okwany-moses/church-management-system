@@ -29,7 +29,8 @@ import {
   Mic,
   Lock,
   BookCheck,
-  Heart
+  Heart,
+  Menu
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -52,6 +53,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>("dashboard");
   const [adminPassword, setAdminPassword] = useState(() => localStorage.getItem("gimk_admin_password") || "admin123");
   const [tickerTime, setTickerTime] = useState("");
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   
   // Notification Toast state
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -61,6 +63,96 @@ export default function App() {
 
   // Global triggers to force re-render/refreshes in related siblings
   const [globalRefreshCount, setGlobalRefreshCount] = useState(0);
+  const [authModal, setAuthModal] = useState<{
+    type: "adminAuth" | "changePassword" | "memberPin";
+    pendingMemberId?: number;
+  } | null>(null);
+  const [modalInput, setModalInput] = useState("");
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  const closeAuthModal = () => {
+    setAuthModal(null);
+    setModalInput("");
+    setShowResetConfirm(false);
+  };
+
+  const openAdminAuthModal = () => {
+    setAuthModal({ type: "adminAuth" });
+    setModalInput("");
+    setShowResetConfirm(false);
+  };
+
+  const openChangePasswordModal = () => {
+    setAuthModal({ type: "changePassword" });
+    setModalInput("");
+    setShowResetConfirm(false);
+  };
+
+  const openMemberPinModal = (memberId: number) => {
+    setAuthModal({ type: "memberPin", pendingMemberId: memberId });
+    setModalInput("");
+    setShowResetConfirm(false);
+  };
+
+  const handleAuthModalSubmit = () => {
+    if (!authModal) return;
+    const value = modalInput.trim();
+
+    if (authModal.type === "adminAuth") {
+      if (value.toLowerCase() === "forgot") {
+        setShowResetConfirm(true);
+        return;
+      }
+      if (value.length === 0) {
+        showToast("Please enter the admin password or type 'forgot'.", "error");
+        return;
+      }
+      if (value === adminPassword) {
+        setRoleMode("admin");
+        showToast("Administrative credentials verified.", "success");
+        closeAuthModal();
+      } else {
+        showToast("Access Denied: Incorrect password.", "error");
+      }
+      return;
+    }
+
+    if (authModal.type === "changePassword") {
+      if (value.length === 0) {
+        showToast("Please enter a new admin password.", "error");
+        return;
+      }
+      setAdminPassword(value);
+      localStorage.setItem("gimk_admin_password", value);
+      showToast("Admin password updated successfully.", "success");
+      closeAuthModal();
+      return;
+    }
+
+    if (authModal.type === "memberPin") {
+      if (value.length === 0) {
+        showToast("Please enter your admin password to continue.", "error");
+        return;
+      }
+      if (value === adminPassword) {
+        setRoleMode("admin");
+        setSelectedMemberId(authModal.pendingMemberId ?? null);
+        setActiveTab("members");
+        showToast("Admin access granted to Member Directory.", "success");
+        closeAuthModal();
+      } else {
+        showToast("Incorrect admin password.", "error");
+      }
+    }
+  };
+
+  const resetAdminPasswordToDefault = () => {
+    const defaultPwd = "admin123";
+    setAdminPassword(defaultPwd);
+    localStorage.setItem("gimk_admin_password", defaultPwd);
+    showToast("Admin password reset to default.", "success");
+    closeAuthModal();
+  };
 
   const triggerGlobalRefresh = () => {
     setGlobalRefreshCount(prev => prev + 1);
@@ -127,38 +219,14 @@ export default function App() {
   const handleSwitchRole = (mode: "congregant" | "admin") => {
     if (mode === "admin") {
       if (roleMode === "admin") return;
-      const password = window.prompt("Admin Authentication Required (Type 'forgot' to reset to default):");
-      if (password === null) return;
-
-      if (password.toLowerCase() === "forgot") {
-        const confirmReset = window.confirm("Reset admin password to default 'admin123'?");
-        if (confirmReset) {
-          const defaultPwd = "admin123";
-          setAdminPassword(defaultPwd);
-          localStorage.setItem("gimk_admin_password", defaultPwd);
-          showToast("Admin password reset to default.", "success");
-        }
-        return;
-      }
-
-      if (password === adminPassword) {
-        setRoleMode("admin");
-        showToast("Administrative credentials verified.", "success");
-      } else {
-        showToast("Access Denied: Incorrect password.", "error");
-      }
+      openAdminAuthModal();
     } else {
       setRoleMode("congregant");
     }
   };
 
   const handleChangePassword = () => {
-    const newPwd = window.prompt("Enter new Admin password:");
-    if (newPwd && newPwd.trim().length > 0) {
-      setAdminPassword(newPwd);
-      localStorage.setItem("gimk_admin_password", newPwd);
-      showToast("Admin password updated successfully.", "success");
-    }
+    openChangePasswordModal();
   };
 
   const handleNavigateToMember = (memberId: number) => {
@@ -166,20 +234,22 @@ export default function App() {
       setSelectedMemberId(memberId);
       setActiveTab("members");
     } else {
-      const password = window.prompt("Enter Admin Pin to access Member Directory:");
-      if (password === "admin123") {
-        setRoleMode("admin");
-        setSelectedMemberId(memberId);
-        setActiveTab("members");
-      }
+      openMemberPinModal(memberId);
     }
   };
 
   return (
     <div className="min-h-screen bg-[#FDFCF8] flex flex-col font-sans select-none antialiased text-[#2D3436]">
       {/* Brand Header */}
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#E5E1D8] shadow-sm px-10 py-4 flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-[#E5E1D8] shadow-sm px-4 md:px-10 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setMobileNavOpen((open) => !open)}
+            className="md:hidden inline-flex items-center justify-center rounded-2xl border border-[#E5E1D8] bg-white p-2 text-[#2D3E50] shadow-sm transition hover:bg-[#F5F2ED]"
+            aria-label="Toggle navigation menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
           <img src="/images/logo.jpg" alt="GIMK Logo" className="h-10 w-10 rounded-full object-cover border border-[#E5E1D8] shadow-sm" />
           <div>
             <span className="font-display font-black text-[#2D3E50] uppercase tracking-tight text-xs md:text-sm select-none leading-none block">
@@ -251,8 +321,57 @@ export default function App() {
 
       {/* Navigation and Layout Shell */}
       <div className="flex-grow flex flex-col min-[860px]:flex-row">
-        {/* Navigation Rail Left */}
-        <nav className="bg-white border-b min-[860px]:border-b-0 min-[860px]:border-r border-[#E5E1D8] w-full min-[860px]:w-64 flex min-[860px]:flex-col py-6 px-4 gap-2 flex-shrink-0 select-none overflow-x-auto min-[860px]:overflow-x-visible">
+        {/* Mobile Navigation Overlay */}
+        <div className={`fixed inset-y-0 left-0 z-50 w-72 max-w-full overflow-y-auto bg-white border-r border-[#E5E1D8] p-4 shadow-2xl transition-transform duration-300 md:hidden ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+          <div className="flex items-center justify-between gap-3 pb-4 border-b border-[#E5E1D8] mb-4">
+            <div className="flex items-center gap-3">
+              <img src="/images/logo.jpg" alt="GIMK Logo" className="h-9 w-9 rounded-full object-cover border border-[#E5E1D8] shadow-sm" />
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#2D3E50]">GIMK Mobile</p>
+                <p className="text-[10px] text-[#636E72]">Quick access menu</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setMobileNavOpen(false)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-2xl border border-[#E5E1D8] bg-[#F8FAFC] text-[#2D3E50] transition hover:bg-[#E5E7EB]"
+              aria-label="Close navigation menu"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="space-y-2">
+            {navigationItems.map((item) => {
+              const ActiveIcon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setActiveTab(item.id as any);
+                    setMobileNavOpen(false);
+                    if (item.id !== "members") {
+                      setSelectedMemberId(null);
+                    }
+                  }}
+                  className={`flex items-center gap-3 w-full rounded-2xl px-3 py-3 text-sm font-semibold transition ${
+                    isActive
+                      ? "bg-[#2D3E50] text-white"
+                      : "text-[#475569] hover:bg-[#F5F2ED]"
+                  }`}
+                >
+                  <ActiveIcon className="h-5 w-5" aria-hidden="true" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {mobileNavOpen && (
+          <div className="fixed inset-0 z-40 bg-black/20 md:hidden" onClick={() => setMobileNavOpen(false)} />
+        )}
+
+        {/* Desktop Navigation Rail Left */}
+        <nav className="hidden md:flex bg-white border-b min-[860px]:border-b-0 min-[860px]:border-r border-[#E5E1D8] w-full min-[860px]:w-64 flex min-[860px]:flex-col py-6 px-4 gap-2 flex-shrink-0 select-none overflow-x-auto min-[860px]:overflow-x-visible">
           <div className="hidden min-[860px]:block text-[10px] font-bold text-[#A0A0A0] uppercase pl-3 py-1 select-none tracking-[0.2em] mb-2">
             Sanctuary Controls
           </div>
@@ -360,10 +479,47 @@ export default function App() {
             </AnimatePresence>
           </div>
         </main>
+
+        {/* Mobile bottom navigation shortcuts */}
+        <div className="fixed inset-x-0 bottom-0 z-40 flex gap-2 overflow-x-auto border-t border-[#E5E1D8] bg-white px-3 py-3 sm:hidden">
+          {navigationItems.slice(0, 5).map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setActiveTab(item.id as any);
+                  if (item.id !== "members") {
+                    setSelectedMemberId(null);
+                  }
+                }}
+                aria-label={item.label}
+                className={`inline-flex min-w-[60px] flex-col items-center justify-center gap-1 rounded-2xl border px-3 py-2 text-[10px] font-semibold transition ${
+                  isActive
+                    ? "border-[#2D3E50] bg-[#2D3E50] text-white"
+                    : "border-[#E5E1D8] bg-[#F8FAFC] text-[#475569] hover:bg-[#E5E7EB]"
+                }`}
+              >
+                <Icon className="h-4 w-4" aria-hidden="true" />
+                <span className="whitespace-nowrap">{item.label.split(' ')[0]}</span>
+              </button>
+            );
+          })}
+          <button
+            onClick={() => setMobileNavOpen(true)}
+            className="inline-flex min-w-[60px] flex-col items-center justify-center gap-1 rounded-2xl border border-[#E5E1D8] bg-[#F8FAFC] px-3 py-2 text-[10px] font-semibold text-[#475569] hover:bg-[#E5E7EB]"
+            aria-label="Open full navigation menu"
+          >
+            <Menu className="h-4 w-4" aria-hidden="true" />
+            <span>Menu</span>
+          </button>
+        </div>
+        <div className="h-28 sm:hidden" />
       </div>
 
       {/* Styled Geometric Balance System Footer */}
-      <footer className="h-11 bg-[#2D3E50] border-t border-[#1e2a36] flex items-center justify-between px-10 text-white/50 text-[10px] uppercase tracking-[0.15em] shrink-0">
+      <footer className="h-11 bg-[#2D3E50] border-t border-[#1e2a36] flex items-center justify-between px-4 md:px-10 text-white/50 text-[10px] uppercase tracking-[0.15em] shrink-0">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
@@ -383,6 +539,91 @@ export default function App() {
       </footer>
 
       {/* Floating alert notifications triggers (Toasts) */}
+      {authModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 py-6">
+          <div className="w-full max-w-xl rounded-3xl border border-[#E5E1D8] bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-[#1F2937]">
+                  {authModal.type === "adminAuth" && "Admin Authentication Required"}
+                  {authModal.type === "changePassword" && "Change Admin Password"}
+                  {authModal.type === "memberPin" && "Admin Access Required"}
+                </h2>
+                <p className="mt-2 text-sm text-[#475569] leading-relaxed">
+                  {authModal.type === "adminAuth" && "Enter the current admin password or type 'forgot' to reset it to default."}
+                  {authModal.type === "changePassword" && "Set a new admin password for portal access."}
+                  {authModal.type === "memberPin" && "Enter the admin password to continue to the Member Directory."}
+                </p>
+              </div>
+              <button
+                onClick={closeAuthModal}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[#E5E1D8] bg-[#F8FAFC] text-[#475569] transition hover:bg-[#F2F4F7]"
+                aria-label="Close authentication dialog"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-6 space-y-4">
+              {!showResetConfirm && (
+                <div>
+                  <label className="block text-sm font-semibold text-[#334155] mb-2">
+                    {authModal.type === "changePassword" ? "New Admin Password" : "Password"}
+                  </label>
+                  <input
+                    type="password"
+                    value={modalInput}
+                    onChange={(event) => setModalInput(event.target.value)}
+                    className="w-full rounded-2xl border border-[#E5E1D8] bg-[#F8FAFC] px-4 py-3 text-sm text-[#2D3E50] outline-none transition focus:border-[#2D3E50] focus:ring-2 focus:ring-[#C5A059]/20"
+                    placeholder={authModal.type === "adminAuth" ? "Enter admin password or type 'forgot'" : "Enter admin password"}
+                    autoFocus
+                  />
+                </div>
+              )}
+
+              {showResetConfirm && (
+                <div className="rounded-3xl bg-[#FEF3C7] border border-[#FDE68A] p-4 text-sm text-[#92400E]">
+                  <p className="font-semibold">Reset admin password to default?</p>
+                  <p className="mt-2 text-[#92400E]">
+                    Confirming will restore the password to <strong>admin123</strong> and close this dialog.
+                  </p>
+                  <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                    <button
+                      onClick={() => setShowResetConfirm(false)}
+                      className="rounded-2xl border border-[#D6D3D1] bg-white px-4 py-2 text-sm font-semibold text-[#334155] transition hover:bg-[#F8FAFC]"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={resetAdminPasswordToDefault}
+                      className="rounded-2xl bg-[#b45309] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#92400e]"
+                    >
+                      Reset Password
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {!showResetConfirm && (
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+                <button
+                  onClick={closeAuthModal}
+                  className="rounded-2xl border border-[#E5E1D8] bg-white px-4 py-3 text-sm font-semibold text-[#475569] transition hover:bg-[#F8FAFC]"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAuthModalSubmit}
+                  className="rounded-2xl bg-[#2D3E50] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#1F2937]"
+                >
+                  Submit
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       <AnimatePresence>
         {toast && (
           <motion.div

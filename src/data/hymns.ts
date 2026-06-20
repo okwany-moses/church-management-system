@@ -23,6 +23,7 @@ export interface Hymn {
 
 export const HYMNS: Hymn[] = [
   {
+    id: 1,
     number: 1,
     category: "Grace & Salvation",
     key: "F Major",
@@ -78,6 +79,7 @@ export const HYMNS: Hymn[] = [
     }
   },
   {
+    id: 2,
     number: 2,
     category: "Praise & Worship",
     key: "B-flat Major",
@@ -131,6 +133,7 @@ export const HYMNS: Hymn[] = [
     }
   },
   {
+    id: 3,
     number: 3,
     category: "Fellowship & Prayer",
     key: "F Major",
@@ -182,6 +185,7 @@ export const HYMNS: Hymn[] = [
     }
   },
   {
+    id: 4,
     number: 4,
     category: "Faith & Assurance",
     key: "D Major",
@@ -229,6 +233,7 @@ export const HYMNS: Hymn[] = [
     }
   },
   {
+    id: 5,
     number: 5,
     category: "Comfort & Refuge",
     key: "B-flat Major",
@@ -276,6 +281,7 @@ export const HYMNS: Hymn[] = [
     }
   },
   {
+    id: 6,
     number: 6,
     category: "Comfort & Peace",
     key: "G Major",
@@ -327,6 +333,7 @@ export const HYMNS: Hymn[] = [
     }
   },
   {
+    id: 7,
     number: 7,
     category: "Praise & Worship",
     key: "G Major",
@@ -376,6 +383,7 @@ export const HYMNS: Hymn[] = [
     }
   },
   {
+    id: 8,
     number: 8,
     category: "Grace & Salvation",
     key: "A-flat Major",
