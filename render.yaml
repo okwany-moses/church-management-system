@@ -2,6 +2,7 @@ services:
   - type: web
     name: church-management-system
     env: docker
+    rootDirectory: .
     region: oregon
     plan: starter
     dockerfilePath: Dockerfile
