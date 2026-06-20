@@ -1,11 +1,10 @@
 services:
   - type: web
     name: church-management-system
-    env: node
+    env: docker
     region: oregon
     plan: starter
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    dockerfilePath: Dockerfile
     envVars:
       - key: NODE_ENV
         value: production
