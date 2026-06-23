@@ -31,9 +31,10 @@ interface MembersProps {
   selectedMemberId?: number | null;
   onClearSelectedMember?: () => void;
   isAdmin?: boolean;
+  canExport?: boolean;
 }
 
-export default function Members({ onDataChange, selectedMemberId, onClearSelectedMember, isAdmin = true }: MembersProps) {
+export default function Members({ onDataChange, selectedMemberId, onClearSelectedMember, isAdmin = true, canExport = false }: MembersProps) {
   const [members, setMembers] = useState<Member[]>([]);
   const [ministries, setMinistries] = useState<Ministry[]>([]);
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -336,15 +337,17 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={handleExportCSV}
-            disabled={filteredMembers.length === 0}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-[#E5E1D8] bg-white px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#636E72] hover:bg-neutral-50 hover:text-neutral-900 disabled:opacity-50 transition cursor-pointer"
-            title="Export list to CSV format"
-          >
-            <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
-            <span>Export CSV</span>
-          </button>
+          {canExport && (
+            <button
+              onClick={handleExportCSV}
+              disabled={filteredMembers.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-[#E5E1D8] bg-white px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-[#636E72] hover:bg-neutral-50 hover:text-neutral-900 disabled:opacity-50 transition cursor-pointer"
+              title="Export list to CSV format"
+            >
+              <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+              <span>Export CSV</span>
+            </button>
+          )}
           
           {isAdmin && (
             <button

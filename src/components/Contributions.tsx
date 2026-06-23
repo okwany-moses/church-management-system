@@ -32,11 +32,12 @@ import { downloadCSV } from "../utils/exporter";
 interface ContributionsProps {
   onDataChange?: () => void;
   isAdmin?: boolean;
+  canExport?: boolean;
 }
 
 type FinanceTab = "ledger" | "incomes" | "expenditures";
 
-export default function Contributions({ onDataChange, isAdmin = true }: ContributionsProps) {
+export default function Contributions({ onDataChange, isAdmin = true, canExport = false }: ContributionsProps) {
   const [activeSubTab, setActiveSubTab] = useState<FinanceTab>("ledger");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -763,14 +764,16 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                     <span className="text-[10px] font-bold text-[#636E72] normal-case bg-[#F5F2ED] px-3 py-1.5 rounded-lg border border-[#E5E1D8]">
                       {contributions.length + expenditures.length} database transaction lines
                     </span>
-                    <button
-                      onClick={handleExportLedger}
-                      className="h-8 rounded-lg border border-[#E5E1D8] bg-white px-3 font-bold uppercase tracking-wider text-[10px] text-[#636E72] hover:bg-neutral-50 hover:text-neutral-900 transition flex items-center gap-1.5 cursor-pointer"
-                      title="Export compiled journal ledger (CSV)"
-                    >
-                      <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
-                      Export Ledger CSV
-                    </button>
+                    {canExport && (
+                      <button
+                        onClick={handleExportLedger}
+                        className="h-8 rounded-lg border border-[#E5E1D8] bg-white px-3 font-bold uppercase tracking-wider text-[10px] text-[#636E72] hover:bg-neutral-50 hover:text-neutral-900 transition flex items-center gap-1.5 cursor-pointer"
+                        title="Export compiled journal ledger (CSV)"
+                      >
+                        <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                        Export Ledger CSV
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -991,15 +994,17 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
 
 
 
-                  <button
-                    onClick={handleExportIncomes}
-                    disabled={filteredIncomes.length === 0}
-                    className="h-8 rounded-lg border border-[#E5E1D8] bg-white px-3 font-bold uppercase tracking-wider text-[10px] text-[#636E72] hover:bg-neutral-50 hover:text-neutral-900 disabled:opacity-50 transition flex items-center gap-1.5 cursor-pointer"
-                    title="Export filtered contributions list to CSV"
-                  >
-                    <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
-                    <span>Export CSV</span>
-                  </button>
+                  {canExport && (
+                    <button
+                      onClick={handleExportIncomes}
+                      disabled={filteredIncomes.length === 0}
+                      className="h-8 rounded-lg border border-[#E5E1D8] bg-white px-3 font-bold uppercase tracking-wider text-[10px] text-[#636E72] hover:bg-neutral-50 hover:text-neutral-900 disabled:opacity-50 transition flex items-center gap-1.5 cursor-pointer"
+                      title="Export filtered contributions list to CSV"
+                    >
+                      <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>Export CSV</span>
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -1163,15 +1168,17 @@ export default function Contributions({ onDataChange, isAdmin = true }: Contribu
                     </select>
                   </div>
 
-                  <button
-                    onClick={handleExportExpenditures}
-                    disabled={filteredExpenses.length === 0}
-                    className="h-8 rounded-lg border border-[#E5E1D8] bg-white px-3 font-bold uppercase tracking-wider text-[10px] text-[#636E72] hover:bg-neutral-50 hover:text-neutral-900 disabled:opacity-50 transition flex items-center gap-1.5 cursor-pointer"
-                    title="Export filtered expenditures list to CSV"
-                  >
-                    <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
-                    <span>Export CSV</span>
-                  </button>
+                  {canExport && (
+                    <button
+                      onClick={handleExportExpenditures}
+                      disabled={filteredExpenses.length === 0}
+                      className="h-8 rounded-lg border border-[#E5E1D8] bg-white px-3 font-bold uppercase tracking-wider text-[10px] text-[#636E72] hover:bg-neutral-50 hover:text-neutral-900 disabled:opacity-50 transition flex items-center gap-1.5 cursor-pointer"
+                      title="Export filtered expenditures list to CSV"
+                    >
+                      <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>Export CSV</span>
+                    </button>
+                  )}
                 </div>
               </div>
 

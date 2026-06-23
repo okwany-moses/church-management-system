@@ -49,9 +49,10 @@ type ActiveTab =
   | "prayer_requests";
 
 export default function App() {
-  const [roleMode, setRoleMode] = useState<"congregant" | "admin">("congregant");
+  const [portalRole, setPortalRole] = useState<"congregant" | "pastor" | "admin">("congregant");
   const [activeTab, setActiveTab] = useState<ActiveTab>("dashboard");
   const [adminPassword, setAdminPassword] = useState(() => localStorage.getItem("gimk_admin_password") || "admin123");
+  const [pastorPassword, setPastorPassword] = useState(() => localStorage.getItem("gimk_pastor_password") || "password123");
   const [tickerTime, setTickerTime] = useState("");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   
@@ -64,52 +65,40 @@ export default function App() {
   // Global triggers to force re-render/refreshes in related siblings
   const [globalRefreshCount, setGlobalRefreshCount] = useState(0);
   const [authModal, setAuthModal] = useState<{
-    type: "adminAuth" | "changePassword" | "memberPin";
-    pendingMemberId?: number;
+    type: "adminAuth" | "pastorAuth" | "changePassword";
+    pendingRole?: "admin" | "pastor";
   } | null>(null);
   const [modalInput, setModalInput] = useState("");
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const closeAuthModal = () => {
     setAuthModal(null);
     setModalInput("");
-    setShowResetConfirm(false);
   };
 
-  const openAdminAuthModal = () => {
-    setAuthModal({ type: "adminAuth" });
+  const openPortalAuthModal = (role: "admin" | "pastor") => {
+    setAuthModal({ type: role === "admin" ? "adminAuth" : "pastorAuth", pendingRole: role });
     setModalInput("");
-    setShowResetConfirm(false);
   };
 
   const openChangePasswordModal = () => {
-    setAuthModal({ type: "changePassword" });
+    setAuthModal({ type: "changePassword", pendingRole: portalRole === "admin" ? "admin" : portalRole === "pastor" ? "pastor" : undefined });
     setModalInput("");
-    setShowResetConfirm(false);
-  };
-
-  const openMemberPinModal = (memberId: number) => {
-    setAuthModal({ type: "memberPin", pendingMemberId: memberId });
-    setModalInput("");
-    setShowResetConfirm(false);
   };
 
   const handleAuthModalSubmit = () => {
     if (!authModal) return;
     const value = modalInput.trim();
 
-    if (authModal.type === "adminAuth") {
-      if (value.toLowerCase() === "forgot") {
-        setShowResetConfirm(true);
-        return;
-      }
+    if (authModal.type === "adminAuth" || authModal.type === "pastorAuth") {
       if (value.length === 0) {
-        showToast("Please enter the admin password or type 'forgot'.", "error");
+        showToast("Please enter the password to continue.", "error");
         return;
       }
-      if (value === adminPassword) {
-        setRoleMode("admin");
-        showToast("Administrative credentials verified.", "success");
+
+      const passwordToCheck = authModal.type === "adminAuth" ? adminPassword : pastorPassword;
+      if (value === passwordToCheck) {
+        setPortalRole(authModal.pendingRole!);
+        showToast(`${authModal.pendingRole === "admin" ? "Administrator" : "Pastor"} access granted.`, "success");
         closeAuthModal();
       } else {
         showToast("Access Denied: Incorrect password.", "error");
@@ -119,39 +108,23 @@ export default function App() {
 
     if (authModal.type === "changePassword") {
       if (value.length === 0) {
-        showToast("Please enter a new admin password.", "error");
+        showToast("Please enter a new password.", "error");
         return;
       }
-      setAdminPassword(value);
-      localStorage.setItem("gimk_admin_password", value);
-      showToast("Admin password updated successfully.", "success");
+      if (portalRole === "admin") {
+        setAdminPassword(value);
+        localStorage.setItem("gimk_admin_password", value);
+        showToast("Admin password updated successfully.", "success");
+      } else if (portalRole === "pastor") {
+        setPastorPassword(value);
+        localStorage.setItem("gimk_pastor_password", value);
+        showToast("Pastor password updated successfully.", "success");
+      } else {
+        showToast("You must be logged in as admin or pastor to change the password.", "error");
+      }
       closeAuthModal();
       return;
     }
-
-    if (authModal.type === "memberPin") {
-      if (value.length === 0) {
-        showToast("Please enter your admin password to continue.", "error");
-        return;
-      }
-      if (value === adminPassword) {
-        setRoleMode("admin");
-        setSelectedMemberId(authModal.pendingMemberId ?? null);
-        setActiveTab("members");
-        showToast("Admin access granted to Member Directory.", "success");
-        closeAuthModal();
-      } else {
-        showToast("Incorrect admin password.", "error");
-      }
-    }
-  };
-
-  const resetAdminPasswordToDefault = () => {
-    const defaultPwd = "admin123";
-    setAdminPassword(defaultPwd);
-    localStorage.setItem("gimk_admin_password", defaultPwd);
-    showToast("Admin password reset to default.", "success");
-    closeAuthModal();
   };
 
   const triggerGlobalRefresh = () => {
@@ -184,13 +157,16 @@ export default function App() {
   }, []);
 
   // Adaptive tab categories based on portal role mode
-  const navigationItems = roleMode === "congregant"
+  const navigationItems = portalRole === "congregant" || portalRole === "pastor"
     ? [
         { id: "dashboard", label: "Spiritual Home", icon: LayoutDashboard },
+        { id: "members", label: "Congregant Directory", icon: Users },
+        { id: "ministries", label: "Ministries & Groups", icon: HeartHandshake },
+        { id: "contributions", label: "Financial Ledger", icon: DollarSign },
+        { id: "events", label: "Sanctuary Calendar", icon: CalendarDays },
         { id: "sermons", label: "Pulpit Sermons", icon: Mic },
         { id: "bible", label: "Holy Bible", icon: BookCheck },
         { id: "songbook", label: "GIMK Songbook", icon: BookOpen },
-        { id: "events", label: "Sanctuary Calendar", icon: CalendarDays },
         { id: "prayer_requests", label: "Prayer Requests", icon: Heart },
       ]
     : [
@@ -214,14 +190,17 @@ export default function App() {
     if (!hasTab) {
       setActiveTab("dashboard");
     }
-  }, [roleMode]);
+  }, [portalRole]);
 
-  const handleSwitchRole = (mode: "congregant" | "admin") => {
+  const handleSwitchRole = (mode: "congregant" | "pastor" | "admin") => {
     if (mode === "admin") {
-      if (roleMode === "admin") return;
-      openAdminAuthModal();
+      if (portalRole === "admin") return;
+      openPortalAuthModal("admin");
+    } else if (mode === "pastor") {
+      if (portalRole === "pastor") return;
+      openPortalAuthModal("pastor");
     } else {
-      setRoleMode("congregant");
+      setPortalRole("congregant");
     }
   };
 
@@ -230,12 +209,8 @@ export default function App() {
   };
 
   const handleNavigateToMember = (memberId: number) => {
-    if (roleMode === "admin") {
-      setSelectedMemberId(memberId);
-      setActiveTab("members");
-    } else {
-      openMemberPinModal(memberId);
-    }
+    setSelectedMemberId(memberId);
+    setActiveTab("members");
   };
 
   return (
@@ -268,7 +243,7 @@ export default function App() {
             <button
               onClick={() => handleSwitchRole("congregant")}
               className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all rounded-lg select-none cursor-pointer ${
-                roleMode === "congregant"
+                portalRole === "congregant"
                   ? "bg-[#2563EB] text-white shadow-sm"
                   : "text-[#475569] hover:text-[#0E2954]"
               }`}
@@ -276,9 +251,19 @@ export default function App() {
               Congregant
             </button>
             <button
+              onClick={() => handleSwitchRole("pastor")}
+              className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all rounded-lg select-none cursor-pointer ${
+                portalRole === "pastor"
+                  ? "bg-[#1F2937] text-white shadow-sm"
+                  : "text-[#475569] hover:text-[#0E2954]"
+              }`}
+            >
+              Pastor
+            </button>
+            <button
               onClick={() => handleSwitchRole("admin")}
               className={`px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all rounded-lg select-none cursor-pointer ${
-                roleMode === "admin"
+                portalRole === "admin"
                   ? "bg-[#0E2954] text-white shadow-sm"
                   : "text-[#475569] hover:text-[#0E2954]"
               }`}
@@ -299,11 +284,11 @@ export default function App() {
             <span>{tickerTime || "Syncing..."}</span>
           </div>
 
-          {roleMode === "admin" && (
+          {(portalRole === "admin" || portalRole === "pastor") && (
             <button
               onClick={handleChangePassword}
               className="p-1.5 hover:bg-[#F5F2ED] border border-transparent hover:border-[#E5E1D8] rounded-xl transition cursor-pointer select-none"
-              title="Change Admin Password"
+              title="Change Password"
             >
               <Lock className="h-4 w-4 text-[#A0A0A0] hover:text-[#2D3E50]" />
             </button>
@@ -434,7 +419,7 @@ export default function App() {
                       if (tab !== "members") setSelectedMemberId(null);
                     }} 
                     onSelectMember={handleNavigateToMember}
-                    isAdmin={roleMode === "admin"}
+                    isAdmin={portalRole === "admin"}
                   />
                 )}
                 {activeTab === "members" && (
@@ -442,38 +427,39 @@ export default function App() {
                     onDataChange={triggerGlobalRefresh} 
                     selectedMemberId={selectedMemberId}
                     onClearSelectedMember={() => setSelectedMemberId(null)}
-                    isAdmin={roleMode === "admin"}
+                    isAdmin={portalRole === "admin"}
+                    canExport={portalRole !== "congregant"}
                   />
                 )}
                 {activeTab === "ministries" && (
-                  <Ministries onDataChange={triggerGlobalRefresh} isAdmin={roleMode === "admin"} />
+                  <Ministries onDataChange={triggerGlobalRefresh} isAdmin={portalRole === "admin"} />
                 )}
                 {activeTab === "attendance" && (
-                  <Attendance onDataChange={triggerGlobalRefresh} isAdmin={roleMode === "admin"} />
+                  <Attendance onDataChange={triggerGlobalRefresh} isAdmin={portalRole === "admin"} />
                 )}
                 {activeTab === "contributions" && (
-                  <Contributions onDataChange={triggerGlobalRefresh} isAdmin={roleMode === "admin"} />
+                  <Contributions onDataChange={triggerGlobalRefresh} isAdmin={portalRole === "admin"} canExport={portalRole !== "congregant"} />
                 )}
                 {activeTab === "events" && (
-                  <Events onDataChange={triggerGlobalRefresh} isAdmin={roleMode === "admin"} />
+                  <Events onDataChange={triggerGlobalRefresh} isAdmin={portalRole === "admin"} />
                 )}
                 {activeTab === "branches" && (
-                  <Branches onDataChange={triggerGlobalRefresh} isAdmin={roleMode === "admin"} />
+                  <Branches onDataChange={triggerGlobalRefresh} isAdmin={portalRole === "admin"} />
                 )}
                 {activeTab === "communications" && (
-                  <Communications isAdmin={roleMode === "admin"} />
+                  <Communications isAdmin={portalRole === "admin"} />
                 )}
                 {activeTab === "songbook" && (
-                  <Songbook isAdmin={roleMode === "admin"} />
+                  <Songbook isAdmin={portalRole === "admin"} />
                 )}
                 {activeTab === "sermons" && (
-                  <Sermons isAdmin={roleMode === "admin"} />
+                  <Sermons isAdmin={portalRole === "admin"} />
                 )}
                 {activeTab === "bible" && (
                   <Bible />
                 )}
                 {activeTab === "prayer_requests" && (
-                  <PrayerRequests isAdmin={roleMode === "admin"} />
+                  <PrayerRequests isAdmin={portalRole === "admin"} />
                 )}
               </motion.div>
             </AnimatePresence>
@@ -546,13 +532,13 @@ export default function App() {
               <div>
                 <h2 className="text-xl font-bold text-[#1F2937]">
                   {authModal.type === "adminAuth" && "Admin Authentication Required"}
-                  {authModal.type === "changePassword" && "Change Admin Password"}
-                  {authModal.type === "memberPin" && "Admin Access Required"}
+                  {authModal.type === "pastorAuth" && "Pastor Authentication Required"}
+                  {authModal.type === "changePassword" && (portalRole === "admin" ? "Change Admin Password" : portalRole === "pastor" ? "Change Pastor Password" : "Change Password")}
                 </h2>
                 <p className="mt-2 text-sm text-[#475569] leading-relaxed">
-                  {authModal.type === "adminAuth" && "Enter the current admin password or type 'forgot' to reset it to default."}
-                  {authModal.type === "changePassword" && "Set a new admin password for portal access."}
-                  {authModal.type === "memberPin" && "Enter the admin password to continue to the Member Directory."}
+                  {authModal.type === "adminAuth" && "Enter the administrator password to continue."}
+                  {authModal.type === "pastorAuth" && "Enter the pastor password to continue."}
+                  {authModal.type === "changePassword" && "Set a new password for the current portal role."}
                 </p>
               </div>
               <button
@@ -564,63 +550,36 @@ export default function App() {
               </button>
             </div>
 
-            <div className="mt-6 space-y-4">
-              {!showResetConfirm && (
-                <div>
-                  <label className="block text-sm font-semibold text-[#334155] mb-2">
-                    {authModal.type === "changePassword" ? "New Admin Password" : "Password"}
-                  </label>
-                  <input
-                    type="password"
-                    value={modalInput}
-                    onChange={(event) => setModalInput(event.target.value)}
-                    className="w-full rounded-2xl border border-[#E5E1D8] bg-[#F8FAFC] px-4 py-3 text-sm text-[#2D3E50] outline-none transition focus:border-[#2D3E50] focus:ring-2 focus:ring-[#C5A059]/20"
-                    placeholder={authModal.type === "adminAuth" ? "Enter admin password or type 'forgot'" : "Enter admin password"}
-                    autoFocus
-                  />
-                </div>
-              )}
-
-              {showResetConfirm && (
-                <div className="rounded-3xl bg-[#FEF3C7] border border-[#FDE68A] p-4 text-sm text-[#92400E]">
-                  <p className="font-semibold">Reset admin password to default?</p>
-                  <p className="mt-2 text-[#92400E]">
-                    Confirming will restore the password to <strong>admin123</strong> and close this dialog.
-                  </p>
-                  <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-end">
-                    <button
-                      onClick={() => setShowResetConfirm(false)}
-                      className="rounded-2xl border border-[#D6D3D1] bg-white px-4 py-2 text-sm font-semibold text-[#334155] transition hover:bg-[#F8FAFC]"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={resetAdminPasswordToDefault}
-                      className="rounded-2xl bg-[#b45309] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#92400e]"
-                    >
-                      Reset Password
-                    </button>
-                  </div>
-                </div>
-              )}
+            <div className="mt-6">
+              <div>
+                <label className="block text-sm font-semibold text-[#334155] mb-2">
+                  {authModal.type === "changePassword" ? "New Password" : "Password"}
+                </label>
+                <input
+                  type="password"
+                  value={modalInput}
+                  onChange={(event) => setModalInput(event.target.value)}
+                  className="w-full rounded-2xl border border-[#E5E1D8] bg-[#F8FAFC] px-4 py-3 text-sm text-[#2D3E50] outline-none transition focus:border-[#2D3E50] focus:ring-2 focus:ring-[#C5A059]/20"
+                  placeholder="Enter password"
+                  autoFocus
+                />
+              </div>
             </div>
 
-            {!showResetConfirm && (
-              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
-                <button
-                  onClick={closeAuthModal}
-                  className="rounded-2xl border border-[#E5E1D8] bg-white px-4 py-3 text-sm font-semibold text-[#475569] transition hover:bg-[#F8FAFC]"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleAuthModalSubmit}
-                  className="rounded-2xl bg-[#2D3E50] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#1F2937]"
-                >
-                  Submit
-                </button>
-              </div>
-            )}
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
+              <button
+                onClick={closeAuthModal}
+                className="rounded-2xl border border-[#E5E1D8] bg-white px-4 py-3 text-sm font-semibold text-[#475569] transition hover:bg-[#F8FAFC]"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAuthModalSubmit}
+                className="rounded-2xl bg-[#2D3E50] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#1F2937]"
+              >
+                Submit
+              </button>
+            </div>
           </div>
         </div>
       )}
