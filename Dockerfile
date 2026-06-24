@@ -9,13 +9,13 @@ RUN apt-get update && \
 
 COPY package*.json ./
 # Force native modules to build from source inside this image (avoid downloading prebuilt binaries)
-ENV npm_config_build_from_source=true
 RUN npm ci --unsafe-perm && \
     npm rebuild sqlite3 --build-from-source --unsafe-perm || true
 
 COPY . .
-
+ENV NODE_ENV=production
+ENV PORT=10000
 RUN npm run build
 
-EXPOSE 3000
+EXPOSE 10000
 CMD ["npm","run","start"]

@@ -32,6 +32,10 @@ async function startServer() {
   }
   app.use("/images", express.static(imagesPath));
 
+  app.get("/health", (_req, res) => {
+    res.status(200).send("ok");
+  });
+
   console.log("Initializing Church Management SQLite DB...");
   const db = await open({
     filename: "./church.db",

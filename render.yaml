@@ -12,4 +12,4 @@ services:
     disk:
       sizeGB: 1
     autoDeploy: true
-    healthCheckPath: /
+    healthCheckPath: /health
