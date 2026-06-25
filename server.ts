@@ -270,9 +270,13 @@ async function startServer() {
     await db.exec("ALTER TABLE hymns ADD COLUMN melody_notes_json TEXT;");
   }
 
-  // Seed data if DB is empty
+  // One-time sample seeding. A persistent marker in app_meta ensures we seed
+  // only on a brand-new database and NEVER wipe / re-seed a database that
+  // already has data, so saved entries persist until an explicit delete action.
+  await db.exec(`CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value TEXT);`);
+  const alreadySeeded = await db.get("SELECT value FROM app_meta WHERE key = 'seeded'");
   const memberCount = await db.get("SELECT COUNT(*) as count FROM members");
-  if (memberCount.count === 0) {
+  if (!alreadySeeded && memberCount.count === 0) {
     console.log("Seeding database with realistic church data...");
 
     // Reset database state for reliable seeding
@@ -508,6 +512,16 @@ async function startServer() {
     );
 
     console.log("Database seeded successfully!");
+  }
+
+  // Mark seeding as handled so it never runs again, even if every member is
+  // later removed via an explicit delete action. This prevents the destructive
+  // reset-and-reseed above from ever wiping real data on a restart.
+  if (!alreadySeeded) {
+    if (memberCount.count > 0) {
+      console.log("Existing data detected; marking DB as seeded without re-seeding.");
+    }
+    await db.run("INSERT OR REPLACE INTO app_meta (key, value) VALUES ('seeded', 'true')");
   }
 
   // Seed Hymns Library if empty (Independent of member count)
