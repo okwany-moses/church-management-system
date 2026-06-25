@@ -140,7 +140,7 @@ export default function Ministries({ onDataChange, isAdmin = true }: MinistriesP
         <div>
           <h1 className="font-display text-2.5xl font-bold tracking-tight text-[#2D3E50] uppercase">Ministries & Groups</h1>
           <p className="text-sm font-normal text-[#636E72]">
-            Configure volunteer guilds, administrative structures, and groups mapped within sqlite registers.
+            Configure volunteer guilds, administrative structures, and groups mapped within the database.
           </p>
         </div>
         {isAdmin && (

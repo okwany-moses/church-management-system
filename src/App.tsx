@@ -274,8 +274,8 @@ export default function App() {
 
           <div className="hidden min-[650px]:flex items-center gap-1 bg-[#F5F2ED] border border-[#E5E1D8] rounded-lg px-2.5 py-1 text-[11px]">
             <Database className="h-3.5 w-3.5 text-[#C5A059]" />
-            <span className="text-[#A0A0A0] uppercase tracking-wider text-[9px]">SQLite:</span>
-            <span className="text-[#2D3E50] font-bold">Local File Connected</span>
+            <span className="text-[#A0A0A0] uppercase tracking-wider text-[9px]">Database:</span>
+            <span className="text-[#2D3E50] font-bold">PostgreSQL Connected</span>
           </div>
 
           {/* Clock Ticker */}
@@ -395,7 +395,7 @@ export default function App() {
           <div className="hidden min-[860px]:block mt-auto p-4 bg-[#F5F2ED] border border-[#E5E1D8] rounded-xl">
             <h4 className="text-[11px] font-bold uppercase tracking-wider text-[#2D3E50]">Portal Support</h4>
             <p className="text-[10px] text-[#636E72] mt-1.5 leading-relaxed font-medium">
-              Running on a sandboxed Cloud Engine syncing securely to a local SQLite database instance.
+              Running on a sandboxed Cloud Engine syncing securely to a PostgreSQL database instance.
             </p>
           </div>
         </nav>
@@ -512,7 +512,7 @@ export default function App() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            <span>SQLite Local Engine: Connected</span>
+            <span>PostgreSQL Engine: Connected</span>
           </div>
           <span className="text-white/20">|</span>
           <span>Latency: 0.12ms</span>
@@ -600,7 +600,7 @@ export default function App() {
               <Database className="h-3.5 w-3.5" />
             </div>
             <div className="flex-grow">
-              <p className="text-white">SQLite Alert</p>
+              <p className="text-white">Database Alert</p>
               <p className={`font-normal text-[10px] mt-0.5 ${toast.type === "success" ? "text-neutral-300" : "text-rose-200"}`}>
                 {toast.message}
               </p>

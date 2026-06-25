@@ -263,7 +263,7 @@ export default function Branches({ onDataChange, isAdmin = true }: BranchesProps
 
       {loading ? (
         <div className="py-20 text-center text-[#A0A0A0] font-black uppercase text-xs animate-pulse">
-          Syncing branch and cell configurations from SQlite...
+          Syncing branch and cell configurations from the database...
         </div>
       ) : (
         <AnimatePresence mode="wait">

@@ -517,7 +517,7 @@ export default function Attendance({ onDataChange, isAdmin = true }: AttendanceP
               </div>
               <h3 className="font-display text-base font-bold text-neutral-900 font-sans">Delete attendance log?</h3>
               <p className="mt-2 text-neutral-500 leading-relaxed font-semibold">
-                Deleting this log will permanently erase all turning values, statistics, and presence checkboxes associated with this specific date on the SQLite database.
+                Deleting this log will permanently erase all turning values, statistics, and presence checkboxes associated with this specific date on the database.
               </p>
               <div className="mt-5 flex gap-2.5 justify-center">
                 <button

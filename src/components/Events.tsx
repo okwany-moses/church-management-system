@@ -518,7 +518,7 @@ export default function Events({ onDataChange, isAdmin = true }: EventsProps) {
               </div>
               <h3 className="font-display text-base font-bold text-neutral-900 font-sans">Cancel booking event?</h3>
               <p className="mt-2 text-neutral-500 leading-relaxed font-semibold">
-                Are you sure you want to cancel and remove this scheduled event booking from the SQLite records? This cannot be undone.
+                Are you sure you want to cancel and remove this scheduled event booking from the database? This cannot be undone.
               </p>
               <div className="mt-5 flex gap-2.5 justify-center">
                 <button
