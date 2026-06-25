@@ -6,8 +6,7 @@ import { createRequire } from "module";
 import { HYMNS, Hymn } from "./src/data/hymns"; // Import HYMNS and Hymn interface
 import { createServer as createViteServer } from "vite";
 import fs from "fs";
-import { open } from "sqlite";
-import sqlite3 from "sqlite3";
+import { PgDatabase } from "./db";
 import { sendSmsNotification } from "./smsService";
 
 const require = createRequire(import.meta.url);
@@ -36,28 +35,43 @@ async function startServer() {
     res.status(200).send("ok");
   });
 
-  console.log("Initializing Church Management SQLite DB...");
-  // DB_PATH lets the database live on a persistent disk in production
-  // (e.g. a mounted Render disk) so data survives restarts and redeploys.
-  // Defaults to a repo-local file for development.
-  const dbPath = process.env.DB_PATH || "./church.db";
-  const dbDir = path.dirname(dbPath);
-  if (!fs.existsSync(dbDir)) {
-    fs.mkdirSync(dbDir, { recursive: true });
+  console.log("Initializing Church Management PostgreSQL DB...");
+  // DATABASE_URL points at a managed PostgreSQL instance (e.g. a free Render
+  // PostgreSQL add-on). Data lives in the database server, so it survives
+  // restarts and redeploys without any persistent disk.
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error(
+      "DATABASE_URL is not set. Point it at a PostgreSQL instance (e.g. the Render PostgreSQL Internal Database URL)."
+    );
   }
-  console.log(`Using SQLite database at: ${dbPath}`);
-  const db = await open({
-    filename: dbPath,
-    driver: sqlite3.Database,
-  });
+  const db = new PgDatabase(connectionString);
 
-  // Enable foreign keys
-  await db.exec("PRAGMA foreign_keys = ON;");
-
-  // Create tables
+  // Create tables. Tables are declared in dependency order because PostgreSQL
+  // requires a referenced table to exist before a FOREIGN KEY can target it.
   await db.exec(`
+    CREATE TABLE IF NOT EXISTS branches (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      location TEXT NOT NULL,
+      pastor TEXT NOT NULL,
+      date_opened TEXT NOT NULL,
+      contact_phone TEXT,
+      member_count INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS cell_groups (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      leader_name TEXT NOT NULL,
+      meeting_day TEXT NOT NULL,
+      meeting_time TEXT NOT NULL,
+      location_details TEXT NOT NULL,
+      members_count INTEGER DEFAULT 0
+    );
+
     CREATE TABLE IF NOT EXISTS members (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       first_name TEXT NOT NULL,
       last_name TEXT NOT NULL,
       email TEXT,
@@ -77,16 +91,16 @@ async function startServer() {
     );
 
     CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'congregant', -- 'admin', 'congregant'
-      member_id INTEGER, -- Optional: Link to a member record
+      role TEXT NOT NULL DEFAULT 'congregant',
+      member_id INTEGER,
       FOREIGN KEY(member_id) REFERENCES members(id) ON DELETE SET NULL
     );
 
     CREATE TABLE IF NOT EXISTS ministries (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       description TEXT,
       leader_id INTEGER,
@@ -102,7 +116,7 @@ async function startServer() {
     );
 
     CREATE TABLE IF NOT EXISTS attendance_sessions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       title TEXT NOT NULL,
       date TEXT NOT NULL,
       notes TEXT
@@ -118,7 +132,7 @@ async function startServer() {
     );
 
     CREATE TABLE IF NOT EXISTS contributions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       member_id INTEGER,
       amount REAL NOT NULL,
       type TEXT NOT NULL,
@@ -133,7 +147,7 @@ async function startServer() {
     );
 
     CREATE TABLE IF NOT EXISTS events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       title TEXT NOT NULL,
       description TEXT,
       date TEXT NOT NULL,
@@ -144,28 +158,8 @@ async function startServer() {
       FOREIGN KEY(ministry_id) REFERENCES ministries(id) ON DELETE SET NULL
     );
 
-    CREATE TABLE IF NOT EXISTS branches (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      location TEXT NOT NULL,
-      pastor TEXT NOT NULL,
-      date_opened TEXT NOT NULL,
-      contact_phone TEXT,
-      member_count INTEGER DEFAULT 0
-    );
-
-    CREATE TABLE IF NOT EXISTS cell_groups (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      leader_name TEXT NOT NULL,
-      meeting_day TEXT NOT NULL,
-      meeting_time TEXT NOT NULL,
-      location_details TEXT NOT NULL,
-      members_count INTEGER DEFAULT 0
-    );
-
     CREATE TABLE IF NOT EXISTS expenditures (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       title TEXT NOT NULL,
       description TEXT,
       amount REAL NOT NULL,
@@ -176,7 +170,7 @@ async function startServer() {
     );
 
     CREATE TABLE IF NOT EXISTS sms_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       message TEXT NOT NULL,
       recipients_count INTEGER NOT NULL,
       recipients_names TEXT,
@@ -185,7 +179,7 @@ async function startServer() {
     );
 
     CREATE TABLE IF NOT EXISTS video_call_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       title TEXT NOT NULL,
       duration_minutes INTEGER,
       host_name TEXT,
@@ -195,7 +189,7 @@ async function startServer() {
     );
 
     CREATE TABLE IF NOT EXISTS sermons (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       title TEXT NOT NULL,
       speaker TEXT NOT NULL,
       date TEXT NOT NULL,
@@ -206,7 +200,7 @@ async function startServer() {
     );
 
     CREATE TABLE IF NOT EXISTS prayer_requests (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       requester_name TEXT NOT NULL,
       phone TEXT,
       request_text TEXT NOT NULL,
@@ -216,7 +210,7 @@ async function startServer() {
     );
 
     CREATE TABLE IF NOT EXISTS hymns (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      id SERIAL PRIMARY KEY,
       number INTEGER NOT NULL,
       category TEXT NOT NULL,
       hymn_key TEXT NOT NULL,
@@ -228,51 +222,30 @@ async function startServer() {
       languages_json TEXT NOT NULL,
       melody_notes_json TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
   `);
 
-  // Migration: Ensure tables are up to date with new columns
-  const memberColumns = await db.all("PRAGMA table_info(members)");
-  const memberColumnNames = memberColumns.map(c => c.name);
+  // Idempotent migrations for databases created before these columns existed.
+  await db.exec(`
+    ALTER TABLE members ADD COLUMN IF NOT EXISTS title TEXT;
+    ALTER TABLE members ADD COLUMN IF NOT EXISTS registration_number TEXT;
+    ALTER TABLE members ADD COLUMN IF NOT EXISTS branch_id INTEGER;
+    ALTER TABLE members ADD COLUMN IF NOT EXISTS cell_group_id INTEGER;
+    ALTER TABLE contributions ADD COLUMN IF NOT EXISTS branch_id INTEGER;
+    ALTER TABLE contributions ADD COLUMN IF NOT EXISTS cell_group_id INTEGER;
+    ALTER TABLE hymns ADD COLUMN IF NOT EXISTS melody_notes_json TEXT;
+  `);
 
-  if (!memberColumnNames.includes("title")) {
-    console.log("Migrating database: Adding title to members...");
-    await db.exec("ALTER TABLE members ADD COLUMN title TEXT;");
-  }
-  if (!memberColumnNames.includes("registration_number")) {
-    console.log("Migrating database: Adding registration_number to members...");
-    await db.exec("ALTER TABLE members ADD COLUMN registration_number TEXT;");
-  }
-  if (!memberColumnNames.includes("branch_id")) {
-    console.log("Migrating database: Adding branch_id to members...");
-    await db.exec("ALTER TABLE members ADD COLUMN branch_id INTEGER;");
-  }
-  if (!memberColumnNames.includes("cell_group_id")) {
-    console.log("Migrating database: Adding cell_group_id to members...");
-    await db.exec("ALTER TABLE members ADD COLUMN cell_group_id INTEGER;");
-  }
-
-  const contColumns = await db.all("PRAGMA table_info(contributions)");
-  const contColumnNames = contColumns.map(c => c.name);
-  if (!contColumnNames.includes("branch_id")) {
-    console.log("Migrating database: Adding branch_id to contributions...");
-    await db.exec("ALTER TABLE contributions ADD COLUMN branch_id INTEGER;");
-  }
-  if (!contColumnNames.includes("cell_group_id")) {
-    console.log("Migrating database: Adding cell_group_id to contributions...");
-    await db.exec("ALTER TABLE contributions ADD COLUMN cell_group_id INTEGER;");
-  }
-
-  const hymnColumns = await db.all("PRAGMA table_info(hymns)");
-  const hymnColumnNames = hymnColumns.map(c => c.name);
-
-  if (!hymnColumnNames.includes("melody_notes_json")) {
-    console.log("Migrating database: Adding melody_notes_json to hymns...");
-    await db.exec("ALTER TABLE hymns ADD COLUMN melody_notes_json TEXT;");
-  }
-
-  // Seed data if DB is empty
+  // Seed sample data only once, ever. A persistent marker in app_meta guarantees
+  // that after the first run we never wipe/re-seed again - so admin entries are
+  // permanent and are only ever removed by an explicit delete action.
+  const seededMarker = await db.get("SELECT value FROM app_meta WHERE key = 'seeded'");
   const memberCount = await db.get("SELECT COUNT(*) as count FROM members");
-  if (memberCount.count === 0) {
+  if (!seededMarker && memberCount.count === 0) {
     console.log("Seeding database with realistic church data...");
 
     // Reset database state for reliable seeding
@@ -510,6 +483,15 @@ async function startServer() {
     console.log("Database seeded successfully!");
   }
 
+  // Record that initial seeding has been handled so it never runs again, even if
+  // every member is later deleted (which previously triggered a full reset).
+  if (!seededMarker) {
+    await db.run(
+      "INSERT INTO app_meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
+      ["seeded", new Date().toISOString()]
+    );
+  }
+
   // Seed Hymns Library if empty (Independent of member count)
   const hymnCount = await db.get("SELECT COUNT(*) as count FROM hymns");
   if (hymnCount.count === 0) {
@@ -570,7 +552,7 @@ async function startServer() {
       // 2. Financials
       const thisMonthFunds = await db.get(
         `SELECT SUM(amount) as total FROM contributions 
-         WHERE strftime('%Y-%m', date) = strftime('%Y-%m', '2026-05-29')`
+         WHERE LEFT(date, 7) = LEFT('2026-05-29', 7)`
       );
       const totalFunds = await db.get("SELECT SUM(amount) as total FROM contributions");
 
@@ -634,7 +616,7 @@ async function startServer() {
     try {
       const rows = await db.all(`
         SELECT m.*, 
-               GROUP_CONCAT(min.name, ', ') as ministries_list,
+               string_agg(min.name, ', ') as ministries_list,
                b.name as branch_name,
                cg.name as cell_group_name
         FROM members m
@@ -642,7 +624,7 @@ async function startServer() {
         LEFT JOIN ministries min ON mm.ministry_id = min.id
         LEFT JOIN branches b ON m.branch_id = b.id
         LEFT JOIN cell_groups cg ON m.cell_group_id = cg.id
-        GROUP BY m.id
+        GROUP BY m.id, b.name, cg.name
         ORDER BY m.first_name ASC
       `);
       res.json(rows);

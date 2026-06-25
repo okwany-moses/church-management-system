@@ -1,19 +1,23 @@
+databases:
+  - name: church-db
+    plan: free
+    databaseName: church
+    user: church
+
 services:
   - type: web
     name: church-management-system
     env: docker
     rootDirectory: .
     region: oregon
-    plan: starter
+    plan: free
     dockerfilePath: Dockerfile
     envVars:
       - key: NODE_ENV
         value: production
-      - key: DB_PATH
-        value: /var/data/church.db
-    disk:
-      name: church-data
-      mountPath: /var/data
-      sizeGB: 1
+      - key: DATABASE_URL
+        fromDatabase:
+          name: church-db
+          property: connectionString
     autoDeploy: true
     healthCheckPath: /health
