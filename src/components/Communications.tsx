@@ -212,7 +212,7 @@ export default function Communications({ isAdmin = true }: CommunicationsProps) 
       setIsMeetingActive(false);
       setVideoTitle("");
       loadData();
-      alert(`Meeting finalized. Total elapsed state: ${finalMinutes} minutes with ${finalParticipantsCount} connected nodes. Entry archived to SQlite.`);
+      alert(`Meeting finalized. Total elapsed state: ${finalMinutes} minutes with ${finalParticipantsCount} connected nodes. Entry archived to the database.`);
     } catch (err: any) {
       alert("Error archiving call log: " + err.message);
       setIsMeetingActive(false);
@@ -362,7 +362,7 @@ export default function Communications({ isAdmin = true }: CommunicationsProps) 
                 <div className="bg-[#FDFCF8] border border-neutral-150 p-3 rounded-xl text-[10px] text-[#636E72] font-medium leading-relaxed">
                   <strong>Real-Time Delivery Note:</strong> To enable real-time delivery to Kenyan numbers, replace the simulated API call with a production gateway like <em>Africa's Talking</em> or <em>Twilio</em>.
                   <br/><br/>
-                  <strong>Simulated Mode:</strong> Currently running in sandbox mode for SQLite archival.
+                  <strong>Simulated Mode:</strong> Currently running in sandbox mode for database archival.
                 </div>
 
                 <button
@@ -505,7 +505,7 @@ export default function Communications({ isAdmin = true }: CommunicationsProps) 
                     </div>
 
                     <div className="p-4 bg-emerald-50/40 border border-emerald-100 rounded-xl space-y-1 text-[#636E72] font-medium leading-relaxed">
-                      <strong>High-Density Streaming Technology:</strong> Launching a virtual session allocates an instant room buffer with live speaking tracking, full meeting sidebar dialogue chat, mute controllers, and automatically pushes minutes registers straight into SQlite files upon termination.
+                      <strong>High-Density Streaming Technology:</strong> Launching a virtual session allocates an instant room buffer with live speaking tracking, full meeting sidebar dialogue chat, mute controllers, and automatically pushes minutes registers straight into the database upon termination.
                     </div>
 
                     {isAdmin && (

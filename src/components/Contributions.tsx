@@ -595,7 +595,7 @@ export default function Contributions({ onDataChange, isAdmin = true, canExport 
 
       {loading ? (
         <div className="py-20 text-center font-bold text-[#A0A0A0] text-sm animate-pulse">
-          Retrieving financial data files from SQLite Storage...
+          Retrieving financial data from the database...
         </div>
       ) : (
         <AnimatePresence mode="wait">
@@ -1012,7 +1012,7 @@ export default function Contributions({ onDataChange, isAdmin = true, canExport 
               <div className="bg-white border border-[#E5E1D8] rounded-2xl overflow-hidden shadow-xs">
                 {filteredIncomes.length === 0 ? (
                   <div className="p-16 text-center italic text-[#A0A0A0]">
-                    No income logs match the active parameters in SQLite database.
+                    No income logs match the active parameters in the database.
                   </div>
                 ) : (
                   <div className="overflow-x-auto">

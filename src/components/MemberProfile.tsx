@@ -21,8 +21,8 @@ import {
   HeartHandshake
 } from "lucide-react";
 
-// Detailed interface tracking all SQLite schema fields requested
-export interface SQLiteMemberProfile {
+// Detailed interface tracking all database schema fields requested
+export interface MemberProfileData {
   // Personal & Contact Info
   id: number;
   firstName: string;
@@ -98,7 +98,7 @@ export interface SQLiteMemberProfile {
 // ----------------------------------------------------
 // BEAUTIFUL MOCK MEMBERS FIT WITH OUR DATABASE SCHEMA
 // ----------------------------------------------------
-const MOCK_PROFILES: SQLiteMemberProfile[] = [
+const MOCK_PROFILES: MemberProfileData[] = [
   {
     id: 101,
     firstName: "Rev. Joshua",
@@ -280,13 +280,13 @@ export default function MemberProfile({ memberId }: MemberProfileProps) {
         <div>
           <span className="inline-flex items-center gap-1.5 rounded-full bg-[#C5A059]/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#9E7A3B]">
             <Award className="h-3.5 w-3.5 text-[#C5A059]" />
-            SQLite Spec Component
+            Member Profile Component
           </span>
           <h2 className="mt-1 text-xl font-bold tracking-tight text-[#2D3E50]">
             Detailed Member Profile Display
           </h2>
           <p className="text-xs text-neutral-400">
-            Rendered in full compliance with SQLite schemas for integrated database systems.
+            Rendered in full compliance with the database schema for integrated systems.
           </p>
         </div>
 
@@ -435,7 +435,7 @@ export default function MemberProfile({ memberId }: MemberProfileProps) {
           </div>
         </div>
 
-        {/* Right Column (Span 8) - Tabbed Cards representing SQLite Relations */}
+        {/* Right Column (Span 8) - Tabbed Cards representing database relations */}
         <div className="lg:col-span-8 space-y-6">
           
           {/* Section: Roles (Paid Staff & Volunteers) */}

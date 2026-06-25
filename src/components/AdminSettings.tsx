@@ -106,7 +106,7 @@ export default function AdminSettings() {
             <div className="space-y-3">
               <div className="flex items-center justify-between text-[11px]">
                 <span className="text-neutral-500 font-semibold uppercase">Database Engine</span>
-                <span className="font-mono font-bold text-[#2D3E50]">SQLite 3.x (Local)</span>
+                <span className="font-mono font-bold text-[#2D3E50]">PostgreSQL</span>
               </div>
               <div className="flex items-center justify-between text-[11px]">
                 <span className="text-neutral-500 font-semibold uppercase">Environment</span>

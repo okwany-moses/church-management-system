@@ -772,7 +772,7 @@ export default function Members({ onDataChange, selectedMemberId, onClearSelecte
                 </h3>
                 {detailsMember.contributions.length === 0 ? (
                   <p className="text-xs italic text-neutral-400 py-3 rounded-lg border border-dashed border-neutral-200 bg-neutral-50/55 p-4 text-center">
-                    No donations or offering registrations mapped inside local sqlite ledger.
+                    No donations or offering registrations mapped inside the database ledger.
                   </p>
                 ) : (
                   <div className="max-h-48 overflow-y-auto divide-y divide-neutral-100 rounded-xl border border-neutral-200 bg-white">

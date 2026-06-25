@@ -392,7 +392,7 @@ export default function Dashboard({ onNavigate, onSelectMember, isAdmin = true }
                   <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl flex gap-2.5 items-start mt-4">
                     <PiggyBank className="h-4.5 w-4.5 text-blue-600 shrink-0 mt-0.5" />
                     <p className="text-[10px] text-blue-800 leading-relaxed font-semibold">
-                      <strong>Privacy Assurance:</strong> Search takes place securely within our local SQLite engine. Names and donation histories exist for local accounting audits in accordance with Ramba-Kabondo Headquarters directives.
+                      <strong>Privacy Assurance:</strong> Search takes place securely within our PostgreSQL engine. Names and donation histories exist for accounting audits in accordance with Ramba-Kabondo Headquarters directives.
                     </p>
                   </div>
                 </div>
@@ -615,7 +615,7 @@ export default function Dashboard({ onNavigate, onSelectMember, isAdmin = true }
         </div>
         <div className="flex h-10 items-center justify-center gap-2 rounded-xl bg-white px-4 text-xs font-semibold text-[#475569] shadow-sm border border-[#CFD8E3]">
           <Activity className="h-3.5 w-3.5 text-[#2563EB]" />
-          <span>Local SQLite Active Connection</span>
+          <span>PostgreSQL Active Connection</span>
           <span className="h-2 w-2 rounded-full bg-[#2563EB] animate-pulse"></span>
         </div>
       </div>
