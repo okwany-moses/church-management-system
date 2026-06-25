@@ -493,6 +493,9 @@ async function startServer() {
   // Record that initial seeding has been handled so it never runs again, even if
   // every member is later deleted (which previously triggered a full reset).
   if (!seededMarker) {
+    if (memberCount.count > 0) {
+      console.log("Existing data detected; marking DB as seeded without re-seeding.");
+    }
     await db.run(
       "INSERT INTO app_meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
       ["seeded", new Date().toISOString()]
