@@ -37,8 +37,17 @@ async function startServer() {
   });
 
   console.log("Initializing Church Management SQLite DB...");
+  // DB_PATH lets the database live on a persistent disk in production
+  // (e.g. a mounted Render disk) so data survives restarts and redeploys.
+  // Defaults to a repo-local file for development.
+  const dbPath = process.env.DB_PATH || "./church.db";
+  const dbDir = path.dirname(dbPath);
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+  }
+  console.log(`Using SQLite database at: ${dbPath}`);
   const db = await open({
-    filename: "./church.db",
+    filename: dbPath,
     driver: sqlite3.Database,
   });
 

@@ -9,7 +9,11 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: DB_PATH
+        value: /var/data/church.db
     disk:
+      name: church-data
+      mountPath: /var/data
       sizeGB: 1
     autoDeploy: true
     healthCheckPath: /health
