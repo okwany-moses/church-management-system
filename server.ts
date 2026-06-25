@@ -248,12 +248,19 @@ async function startServer() {
   if (!seededMarker && memberCount.count === 0) {
     console.log("Seeding database with realistic church data...");
 
-    // Reset database state for reliable seeding
-    await db.exec("PRAGMA foreign_keys = OFF;");
-    const tables = ['members', 'ministries', 'member_ministries', 'attendance_sessions', 'attendance_records', 'contributions', 'events', 'branches', 'cell_groups', 'expenditures', 'sms_logs', 'video_call_logs', 'sermons', 'prayer_requests'];
-    for (const table of tables) await db.exec(`DELETE FROM ${table}`);
-    await db.exec("DELETE FROM sqlite_sequence WHERE name != 'hymns'");
-    await db.exec("PRAGMA foreign_keys = ON;");
+    // Reset database state for reliable seeding. TRUNCATE ... RESTART IDENTITY
+    // both clears the rows and resets the SERIAL sequences back to 1, so the
+    // hardcoded cross-references in the seed data below (branch_id = 1,
+    // member ids 1-8, ministry ids 1-3, session ids 1-2, ...) stay valid even
+    // if a previous seed attempt was interrupted partway through. CASCADE pulls
+    // in dependent tables (e.g. users). hymns is intentionally excluded so its
+    // separately-seeded data and sequence are preserved.
+    await db.exec(`
+      TRUNCATE members, ministries, member_ministries, attendance_sessions,
+        attendance_records, contributions, events, branches, cell_groups,
+        expenditures, sms_logs, video_call_logs, sermons, prayer_requests
+      RESTART IDENTITY CASCADE;
+    `);
 
     // 1. Branches
     await db.run(`INSERT INTO branches (name, location, pastor, date_opened, contact_phone, member_count) VALUES (?, ?, ?, ?, ?, ?)`, 
